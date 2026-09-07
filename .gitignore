@@ -4,3 +4,20 @@ __pycache__/
 dist/
 node_modules/
 .DS_Store
+
+# Local development instructions, plans, credentials and editor state.
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+/PLAN.md
+/PROJECT.md
+/REVIEW.md
+.codex/
+.claude/
+.cursor/
+.vscode/
+.idea/
+.env
+.env.*
+*.pem
+*.key

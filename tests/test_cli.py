@@ -158,7 +158,7 @@ class CliTest(unittest.TestCase):
     def test_reset_and_profile_cycle(self):
         self.run_cli(["enroll", "--confirm"])
         # Clear the fixture's unconfirmed specials first: a profile
-        # holding them cannot round-trip through reset (F-001 rejects
+        # holding them cannot round-trip through reset (validation rejects
         # unsupported diffs instead of replaying raw bytes).
         code, doc = self.apply_changes({"keys": [
             {"slot": 7, "action": {"kind": "unassigned"}},
@@ -209,7 +209,7 @@ class LostAckTransport(FakeTransport):
 
 
 class FailureEnvelopeTest(unittest.TestCase):
-    """F-002/F-009: failures carry one JSON envelope with recovery detail."""
+    """Failures carry one JSON envelope with recovery detail."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

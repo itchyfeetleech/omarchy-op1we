@@ -186,7 +186,7 @@ def parse_battery(reply: bytes) -> tuple[int, int | None]:
     """Return (percent, charging) from an opcode 0x04 reply.
 
     A missing charging byte means unknown (None), never "not
-    charging" (F-011).
+    charging".
     """
     data = parse_reply(reply, OP_BATTERY)
     if len(data) < 1 or data[0] > 100:
@@ -402,7 +402,7 @@ def config_revision(mem: dict[int, int]) -> str:
 
     Callers pass the canonical map (config plus active type-5
     payloads); addressing the hash keeps sparse and full maps
-    distinct so revisions agree across read/backup/apply (F-003).
+    distinct so revisions agree across read/backup/apply.
     """
     import hashlib
 

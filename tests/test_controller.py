@@ -209,7 +209,7 @@ class LockTest(IsolatedState):
 
 
 class CountingProxy:
-    """Transport factory wrapper counting lock sessions (F-003)."""
+    """Transport factory wrapper counting lock sessions."""
 
     def __init__(self, inner, counter):
         self.inner = inner

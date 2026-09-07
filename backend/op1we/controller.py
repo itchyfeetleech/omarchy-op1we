@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from . import protocol, settings as settings_mod
 from .device import DeviceIdentity, DeviceLock, HidrawTransport, Op1weError
 
-# Whole-operation budgets (F-010): each bounds one command end to
+# Whole-operation budgets: each bounds one command end to
 # end — all chunks, probes and recovery — never per chunk. Values
 # are unchanged from milestone 1; only the semantics tightened
 # (replies answer in well under 100 ms while awake).
@@ -25,10 +25,10 @@ APPLY_TIMEOUT = 10.0
 # Share of a read budget reserved for asleep/offline classification
 # probes so a dead budget still reports the cause, inside the total.
 PROBE_RESERVE = 1.0
-# Single write-attempt ceiling (F-002): writes are never retried, so
+# Single write-attempt ceiling: writes are never retried, so
 # one attempt must cover a slow-but-live ACK on its own.
 WRITE_ACK_TIMEOUT = 2.0
-# Read-only recovery probe ceiling after a failed write (F-002).
+# Read-only recovery probe ceiling after a failed write.
 RECOVERY_PROBE_TIMEOUT = 1.0
 BACKUP_RETAIN = 10
 PROFILE_RETAIN = 20
@@ -39,7 +39,7 @@ def _remaining(deadline: float) -> float:
 
 
 def _read_until(deadline: float) -> float:
-    """Read-phase limit leaving a classification reserve (F-010)."""
+    """Read-phase limit leaving a classification reserve."""
     reserve = min(PROBE_RESERVE, _remaining(deadline) / 2)
     return deadline - reserve
 
@@ -123,7 +123,7 @@ def save_enrollment(identity: DeviceIdentity, model: str = "OP1we") -> dict:
 
 
 def _enrollment_matches(record: dict | None, identity: DeviceIdentity) -> bool:
-    """Enrollment continuity (F-006): fingerprint plus USB path.
+    """Enrollment continuity: fingerprint plus USB path.
 
     The fingerprint is receiver-class attributes (shared across the
     WE series), so a same-descriptor replacement on another port must
@@ -191,7 +191,7 @@ class Controller:
         # Battery first: the receiver answers from cache while the
         # link is momentarily down (docs/protocol.md). The three
         # probes share one whole-operation budget; a malformed reply
-        # degrades its value to unknown instead of escaping (F-009).
+        # degrades its value to unknown instead of escaping.
         deadline = time.monotonic() + STATUS_TIMEOUT
         percent: int | None = None
         charging: int | None = None
@@ -246,7 +246,7 @@ class Controller:
         """Read raw config bytes. Raises asleep/unavailable distinctly.
 
         `timeout` bounds the whole read: every chunk shares one
-        deadline instead of renewing it (F-010).
+        deadline instead of renewing it.
         """
         ranges = ranges if ranges is not None else [(protocol.CONFIG_LO, protocol.CONFIG_HI)]
         deadline = time.monotonic() + timeout
@@ -257,8 +257,8 @@ class Controller:
     def _raise_not_readable(self, transport, deadline: float) -> None:
         # Distinguish sleeping mouse from dead link: battery is cached.
         # Probes are capped slices of the remaining operation budget so
-        # classification never exceeds it (F-010); malformed replies
-        # simply fail the probe instead of escaping (F-009).
+        # classification never exceeds it; malformed replies
+        # simply fail the probe instead of escaping.
         try:
             reply = transport.exchange(
                 protocol.OP_BATTERY, b"", min(0.5, _remaining(deadline))
@@ -294,8 +294,8 @@ class Controller:
 
         Active = slots 1..12 whose record references a type-5
         payload. One lock, one transport, one budget: snapshots and
-        backups can no longer mix generations (F-003), and recovery
-        captures stop depending on the write plan (F-005).
+        backups can no longer mix generations, and recovery
+        captures stop depending on the write plan.
         """
         config = self._read_ranges_locked(
             transport, [(protocol.CONFIG_LO, protocol.CONFIG_HI)], deadline
@@ -395,7 +395,7 @@ class Controller:
 
     @staticmethod
     def _backup_seq(path: str) -> int:
-        """Creation order of a backup file (F-008).
+        """Creation order of a backup file.
 
         Sequence numbers allocate monotonically, so same-second
         bursts order correctly where filenames and mtimes cannot.
@@ -413,7 +413,7 @@ class Controller:
         return max([0] + [self._backup_seq(p) for p in self._backup_files()]) + 1
 
     def _prune_backups(self, keep: str) -> None:
-        """Retain the latest backups, always including `keep` (F-008)."""
+        """Retain the latest backups, always including `keep`."""
         others: list[tuple[int, int, str]] = []
         for path in self._backup_files():
             if path == keep:
@@ -473,8 +473,8 @@ class Controller:
         inside an allowed region). Rejects stale revisions before
         writing a single byte. Every write is sent exactly once and
         its ACK fully validated; failures stop all mutation and carry
-        the recovery backup plus a read-only observation (F-002).
-        `timeout` bounds the whole operation (F-010).
+        the recovery backup plus a read-only observation.
+        `timeout` bounds the whole operation.
         """
         for addr, data in writes.items():
             protocol.ee_write_payload(addr, bytes(data))  # bounds checked here
@@ -561,7 +561,7 @@ class Controller:
         self, transport, deadline: float, backup_path: str,
         addr: int, want: bytes, what: str,
     ) -> Op1weError:
-        """Build a write-failed error with a read-only observation (F-002)."""
+        """Build a write-failed error with a read-only observation."""
         return Op1weError(
             "write-failed",
             f"write at 0x{addr:04x} {what}; state uncertain, "
@@ -575,7 +575,7 @@ class Controller:
     def _recover_read(
         self, transport, addr: int, length: int, deadline: float
     ) -> str | None:
-        """Best-effort read-only probe after a failed write (F-002).
+        """Best-effort read-only probe after a failed write.
 
         One chunk re-read, capped well inside the operation budget;
         never mutates. Returns observed bytes as hex, or None when
@@ -602,7 +602,7 @@ class Controller:
         """Validated apply: plan against fresh memory, then write.
 
         `expected_revision` is required: a draft without a conflict
-        token cannot prove it is fresh (F-003). Returns (snapshot,
+        token cannot prove it is fresh. Returns (snapshot,
         chunk_count). Empty plans compare the token against a fresh
         atomic snapshot and perform zero writes.
         """
@@ -635,7 +635,7 @@ class Controller:
         The target is translated into supported, validated setting
         changes against fresh memory — never replayed raw — so unknown
         regions are preserved and invalid/unsupported targets fail
-        with zero writes (F-001). Returns (snapshot, chunks, changed).
+        with zero writes. Returns (snapshot, chunks, changed).
         """
         current = self.read_full_backup(identity)
         changes, direct = plan_restore(current, mem)
@@ -657,11 +657,11 @@ class Controller:
     def _read_ranges_locked(
         self, transport, ranges: list[tuple[int, int]], deadline: float
     ) -> dict[int, int]:
-        """Read ranges within the operation deadline (F-010).
+        """Read ranges within the operation deadline.
 
         Reads — and only reads — retry to ride out a dozing mouse;
         corrupt echoes retry the chunk within budget instead of
-        escaping (F-009). Exhaustion raises asleep/offline/unavailable
+        escaping. Exhaustion raises asleep/offline/unavailable
         via classification probes inside the same budget.
         """
         read_until = _read_until(deadline)
@@ -698,7 +698,7 @@ class Controller:
         """Retry a read until the deadline; None when it expires.
 
         Reads are side-effect-free, so wake-retry is safe here. Writes
-        never use this helper: one attempt, then stop (F-002).
+        never use this helper: one attempt, then stop.
         """
         while True:
             remaining = deadline - time.monotonic()
@@ -717,7 +717,7 @@ def real_controller() -> Controller:
 
 
 def _merge_adjacent(writes: dict[int, bytes]) -> dict[int, bytes]:
-    """Merge contiguous chunks into ≤10-byte units (F-004).
+    """Merge contiguous chunks into ≤10-byte units.
 
     Whole records become single atomic writes, so click-safe
     ordering reasons about complete bindings, never record halves.
@@ -736,7 +736,7 @@ def _merge_adjacent(writes: dict[int, bytes]) -> dict[int, bytes]:
 
 
 def _left_click_slots(mem: dict[int, int]) -> set[int]:
-    """Slots holding a usable left-click binding (F-004).
+    """Slots holding a usable left-click binding.
 
     Only vendor-exposed slots 1..12 with checksum-valid mouse
     records count. Slots 13–16 sit outside the KM=12 UI with zero
@@ -762,7 +762,7 @@ def _order_click_safe(
 
     Record writes installing a left-click go first, writes removing
     one go last, everything else keeps address order between them
-    (F-004). With whole-record atomic writes, a mid-apply failure can
+   . With whole-record atomic writes, a mid-apply failure can
     no longer strand the device clickless when the plan itself keeps
     a click: every verified prefix state still holds one.
     """
@@ -988,7 +988,7 @@ def plan_apply(mem: dict[int, int], changes: dict) -> dict[int, bytes]:
 def plan_restore(
     current: dict[int, int], target: dict[int, int]
 ) -> tuple[dict, dict[int, bytes]]:
-    """Translate a backup/profile target into validated changes (F-001).
+    """Translate a backup/profile target into validated changes.
 
     Returns (changes, direct_writes). Only verified fields whose
     target bytes are fully specified and valid become changes;

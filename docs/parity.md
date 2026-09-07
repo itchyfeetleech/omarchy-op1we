@@ -13,7 +13,7 @@ Status values: **proven** (read+decode verified on hardware),
 restore-verified), **observed** (seen on hardware or in config, not
 fully decoded), **open** (known to exist, encoding unknown),
 **hidden** (present in the tool but disabled for this device),
-**excluded** (macros — out of scope per PROJECT.md),
+**excluded** (macros — out of scope for this plugin),
 **absent** (demonstrably not in the baseline for this device),
 **host** (host-side behavior, reproduced in the plugin, not on the
 wire).
@@ -26,7 +26,7 @@ wire).
 |---|---|---|---|
 | K1 | Button slots 1–5: left/right/middle/back/forward (`KM=12` [Cfg], `tc_click…tc_back` [UI]) | required | **proven** for `type 0x01` mouse-bitmask encoding [HW]; factory identity mapping on unit |
 | K2 | Button slots 6–11 (slot 4 = Back proven by disable test [HW S1]) | required | **proven** for `02` triad, `07`, `00`, `01`; **open** for `04` generic, `08`, `09` (preserved + reported, never constructed). Behavior tests: `(02,01)`=toggle cycles+wrap, `(02,02)`=plus, `(02,03)`=minus, `(07,00)`=polling-switch 1000→250 [HW S2a]; `(08,00)` emits stage echo, `(09,00)` one unexplained polling delta [HW S2a/S2b] — follow-up single-press tests queued |
-| K3 | Actions: single key, key combination, multimedia + kbd-media list (`tc_singlekey`, `tc_combokey`, `tc_media`, `tc_kbmedia_*` [UI]) | required | **format proven, trigger unobserved**: type-5 record + `0x100` event payload fully decoded from the vendor builder [Bin] (≤3 keys + modifiers, 18-entry media table); write+readback+parse verified on hardware [HW accept]. Physical press observation is a follow-up (no user session spent) |
+| K3 | Actions: single key, key combination, multimedia + kbd-media list (`tc_singlekey`, `tc_combokey`, `tc_media`, `tc_kbmedia_*` [UI]) | required | **format proven, trigger unobserved**: type-5 record + `0x100` event payload fully decoded from the vendor builder [Bin] (≤3 keys + modifiers, 18-entry media table); write+readback+parse verified on hardware [HW accept]. Physical press observation is a follow-up |
 | K4 | Actions: CPI+/CPI−/CPI toggle, DPI lock, polling switch, profile switch (`tc_dpiadd…tc_prosw` [UI]) | required | **proven**: CPI triad + polling-switch (see K2). DPI lock / profile switch candidates live behind unconfirmed `08`/`09` — open follow-up; three-click/sleep likewise unobserved |
 | K5 | Actions: disable, sleep, three-click, double-click variants (`tc_key_off`, `tc_msg27`, `tc_three`, `tc_dbclick` [UI]) | required | **open**: same gap as K2 (disable = zero record `00 00 00 55` is **observed** on slots 12–16 [HW]) |
 | K6 | Constraint "at least one button must be click" (`tc_msg1` [UI]) | required | **backend-enforced** (apply rejects a key plan with no left-click; UI hint in milestone 3) |
@@ -39,7 +39,7 @@ wire).
 |---|---|---|---|
 | C1 | 4 CPI stages, values 50–10000 step 50 then 10100–19000 step 100 (`DM=4`, `DPIRANGE=50,10000,50,10100,19000,100`, defaults 400/800/1600/3200 [Cfg]) | required | **write-proven** for 50..10000 step 50 via backend apply+readback [HW accept]. Above-knee 10100..19000 rejected: multiplier-nibble value map unproven — narrowed 2026-09-07: the `DPIHW` Cfg table mechanism is decoded (optional key, absent in the shipped Cfg → `HW[i]=i+1` default; `DPIH=64` is a UI skin metric, not a table — see `protocol.md`), but the `mul` packing in the stage-record apply path is still unisolated (exact next static target), and any candidate still needs a hardware write/readback session |
 | C2 | Active stage + "CPI toggle" cycle incl. mode button (`SyncChangeDpiLevel`, `g_nCurDpiLevel` [Bin]; short-press cycles 400/800/1600/3200 [QSG]) | required | **proven** both paths: `0x04` header byte reads the 0-based stage (4 matches [HW S2a/S2b]) and unsolicited `0x0A` notifies changes [HW]. Backend `read` reports measured `currentDpi`; `listen` streams changes |
-| C3 | CPI stage count ("CPI Stages", `tc_adv_str19` [UI]) | required | **open**: `0x02` tentative (value 4 = DM); write test never ran (no user session spent). Read-only in backend |
+| C3 | CPI stage count ("CPI Stages", `tc_adv_str19` [UI]) | required | **open**: `0x02` tentative (value 4 = DM); write test never ran. Read-only in backend |
 | C4 | X/Y independent CPI (`tc_msg19 "XY Independent"` [UI]; records carry separate x/y) | required | **absent**: `ShowXY=0` hides the toggle [Cfg]. Backend always writes x=y; decode shows both axes |
 | C5 | Polling rate 125/250/500/1000 Hz (BCD RATE1-4 + DR default [Cfg]; one-hot mask at `0x00` [Bin+HW]) | required | **write-proven**: backend apply 1000→500→1000 with readbacks [HW accept]; firmware cycled 1000→250→1000 via polling-switch action [HW S2a]. Report-timing cross-check still open (follow-up) |
 | C6 | Debounce ms (slider range `DebounceRange=0x1E00` = 0..30 [Bin]; default 3 [Cfg]; `0xA9` pair) | required | **write-proven** for 0..30 ms via backend apply+readback [HW accept] |
@@ -54,8 +54,8 @@ wire).
 
 Macro list/key list/record/import/export/loop options
 (`tc_macro_*`, `tc_mac_def` [UI]) exist in the tool but
-`ShowMacro=0` [Cfg] hides the page for this device, and PROJECT.md
-excludes macros regardless. **Excluded** — no wire work, no UI.
+`ShowMacro=0` [Cfg] hides the page for this device, and this plugin
+excludes macros. **Excluded** — no wire work, no UI.
 
 ### Lighting page (`tc_page4` [UI]) — absent
 
@@ -80,7 +80,7 @@ are preserved untouched by read-modify-write.)
 
 ## Out-of-parity non-goals (confirmed)
 
-- Macros (PROJECT.md exclusion + tool-hides-them).
+- Macros (out of scope and hidden by the vendor tool).
 - RGB/lighting editing, fire key, Windows pointer settings.
 - Firmware flashing (nothing ships to reproduce).
 - Other mouse models (XM2we shares the receiver ID; OP1we-vs-XM2we
@@ -111,10 +111,8 @@ Still open, each with a concrete next step (never guessing):
 - C7 LOD + `0xA0` block: capture a vendor LOD toggle (Windows), or
   isolate the `0xA0` apply writer statically. No change.
 - C5 report-timing cross-check for an absolute polling proof. OP1we
-  motion node identified read-only 2026-09-07
-  (`/dev/input/event13`, `mouse0`); needs operator movement plus a
-  polling write session (user lacks `input` group; node is
-  root-only for this user).
+  motion node identified read-only 2026-09-07; needs operator movement,
+  access to the input device, and a polling write session.
 - C11 charging=1 observation: needs an operator cable session.
 - CID/MID: resolved 2026-09-07. Read-only query confirmed `35:02` on
   OP1we; writes now require that model reply under the device lock.
@@ -122,6 +120,5 @@ Still open, each with a concrete next step (never guessing):
   XM2we re-pairing remains untested. Enrollment stays as explicit consent.
 - `0x06`/`0xAB` meanings; firmware-drift trigger (`0x0A`/`0xA0`/
   `0xA6` changed without host writes): timed re-reads blocked on
-  operator wake — the OP1we sleeps while the user drives one of two
-  other mice (`mouse1`/`mouse2`), and 4/4 backup attempts 2026-09-07
-  returned honest `asleep`.
+  waking the OP1we; 4/4 backup attempts on 2026-09-07
+  returned `asleep`.

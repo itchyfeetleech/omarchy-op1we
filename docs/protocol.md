@@ -126,7 +126,7 @@ Unit's full dump at capture time (mouse awake, all first-try reads):
   report "asleep, move the mouse" instead of failing silently.
 - `0x03`/`0x04` answer in well under 100 ms; EEPROM reads answer
   immediately while awake. Deadlines are whole-operation budgets
-  (review F-010): status 2 s, configuration 5 s, apply 10 s. Every
+  budgets: status 2 s, configuration 5 s, apply 10 s. Every
   chunk, probe and recovery read shares one deadline; values are
   unchanged from milestone 1, only the per-chunk renewal is gone.
 - Never poll EEPROM continuously; never retry writes blindly.

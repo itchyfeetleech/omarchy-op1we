@@ -60,7 +60,7 @@ class Status:
     # True only when the battery reply was parsed on this call with
     # the link up. The receiver answers from cache while the link is
     # down, so a present percent with fresh=False is stale/unknown
-    # age — never a fresh measurement (F-011).
+    # age — never a fresh measurement.
     battery_fresh: bool = False
 
 
@@ -185,7 +185,7 @@ def snapshot_from_memory(
                 payload = {"kind": "unknown", "detail": "short read"}
         bindings.append(ButtonBinding(slot=slot, action=action, payload=payload))
     # Canonical revision: config plus active type-5 payloads, so a
-    # binding edit always changes the token (F-003). `mem` itself may
+    # binding edit always changes the token. `mem` itself may
     # already carry payload keys (backup/profile maps); the merge is
     # idempotent for those.
     canonical = dict(mem)

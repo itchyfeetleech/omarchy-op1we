@@ -1,7 +1,6 @@
 # Device identity, transport and validation evidence
 
-Milestone 1 record. All hardware observations below were taken on the
-developer machine unless stated otherwise.
+Hardware observations and reproducible protocol evidence for the supported receiver.
 
 ## Pinned versions (milestone 1)
 
@@ -22,7 +21,7 @@ developer machine unless stated otherwise.
 | Receiver | USB `3367:1961`, bcdDevice `0101`, USB 2.0 full-speed (12M), bus-powered + remote wakeup, MaxPower 98mA |
 | Product string | `Endgame Gear WE Series Gaming Receiver` (generic across the WE series, not model-specific) |
 | Serial | none (`iSerial 0`, no sysfs `serial` attribute) |
-| Interfaces | if0 HID boot mouse (`0003:3367:1961`, hidraw5 at capture time), if1 HID boot keyboard (`0003:3367:1961`, hidraw6 at capture time) |
+| Interfaces | if0 HID boot mouse (`0003:3367:1961`), if1 HID boot keyboard (`0003:3367:1961`) |
 | Driver | `usbhid` / `hid-generic`; no detachment is ever required |
 | Device access | root-only (`crw-------`) without a udev rule; a narrow `TAG+="uaccess"` rule is provided in `udev/` (not installed in milestone 1) |
 
@@ -33,8 +32,7 @@ device numbers).
 Physical mapping (partial, milestone 2): KeyMatrix slot 4 drives the
 Back side-button (proven by a disable test [HW S1]). Slots 1–3 and 5
 hold the identity mouse mapping (likely Left/Right/Middle/Forward in
-order — untested). Slots 6–11 have unknown physical targets (the full
-rotation test was abandoned for operator fatigue); bindings on
+order — untested). Slots 6–11 have unknown physical targets; bindings on
 unconnected slots are inert but round-trip.
 
 ## Wired mode (unverified)
@@ -48,7 +46,7 @@ unconfirmed).
 
 ## HID report descriptors (read-only capture)
 
-sysfs `report_descriptor` dumps, Curtis `3367:1961`:
+sysfs `report_descriptor` dumps, receiver `3367:1961`:
 
 - if0 (87 bytes): standard boot mouse (buttons/X/Y/wheel + consumer
   pan). No feature reports (`GET_FEATURE` on any ID fails with
@@ -106,7 +104,7 @@ closed with distinct errors. First use also requires explicit local pairing
 enrollment: the operator confirms the paired mouse is the OP1we, and
 the helper records the enrollment (USB path, descriptor hash,
 firmware `bcdDevice`) and enforces fingerprint-plus-USB-path
-continuity on later writes (review F-006). The CID/MID check now rejects a
+continuity on later writes. The CID/MID check now rejects a
 non-OP1we pairing even at the same port; it does not uniquely identify
 one OP1we unit among multiple units of the same model.
 

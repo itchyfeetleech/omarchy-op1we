@@ -63,7 +63,7 @@ def _fail(request_id: str, code: str, message: str, retryable: bool = False,
 
 
 def _fail_exc(request_id: str, exc: device_mod.Op1weError) -> int:
-    """Fail with an Op1weError, preserving post-failure detail (F-002)."""
+    """Fail with an Op1weError, preserving post-failure detail."""
     return _fail(request_id, exc.code, exc.message, exc.retryable, exc.detail)
 
 
@@ -142,7 +142,7 @@ def cmd_status(args) -> int:
                 "batteryPercent": status.percent,
                 # True only for a fresh mouse measurement; a present
                 # percent with batteryFresh=false is receiver cache of
-                # unknown age (F-011). observedAt is the response time.
+                # unknown age. observedAt is the response time.
                 "batteryFresh": status.battery_fresh,
                 "charging": status.charging,
                 "profile": status.profile,
@@ -336,7 +336,7 @@ def cmd_profile(args) -> int:
     if action == "list":
         _emit(_envelope(rid, True, {"profiles": controller_mod.list_profiles()}, None))
         return EXIT_OK
-    # Validate action-specific arguments before any I/O (F-009).
+    # Validate action-specific arguments before any I/O.
     if action in ("save", "show", "delete", "apply") and not args.name:
         return _fail(rid, "invalid-input", f"profile {action} needs --name")
     if action in ("export", "import") and not args.file:
@@ -509,7 +509,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_profile(args)
     except BrokenPipeError:
         return EXIT_PROTOCOL
-    except Exception as exc:  # last resort: one envelope, never a bare traceback (F-009)
+    except Exception as exc:  # last resort: one envelope, never a bare traceback
         import traceback
 
         traceback.print_exc()

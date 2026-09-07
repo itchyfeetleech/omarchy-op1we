@@ -1,7 +1,7 @@
 # Physical acceptance results
 
 Versioned record of on-hardware verification. v0.1 = milestone 1
-(2026-09-07, receiver `3367:1961` bus 1 port 7, mouse on 2.4 GHz
+(2026-09-07, receiver `3367:1961`, mouse on 2.4 GHz
 link, operator present for movement/button tests).
 
 ## v0.1 — transport, reads, reversible write (milestone 1)
@@ -43,8 +43,7 @@ byte-identical re-read of header/CPI/debounce.
 | 23 | Post-session diff vs milestone-1 backup: `0x0A` 1→2, `0xA0` 04→00, `0xA6` 54→58 changed without host writes (audited); `0xA9` 1→3 likewise (restored) | recorded as firmware-managed drift (see `protocol.md`); device healthy, all controls decode |
 
 Type-5 note: write+readback+parse proven (check 20); the physical
-press→HID observation was deliberately not scheduled (operator
-fatigue) and is queued as a 30-second follow-up. Stage restored to
+press→HID observation remains pending. Stage restored to
 2 and slot 4 to `(01,08,00)` at session end.
 
 ## v0.3 — read-only state confirmation + sleep behavior (2026-09-07)
@@ -55,11 +54,11 @@ system change). The user-space permission path still reports honest
 
 | # | Check | Result |
 |---|---|---|
-| 24 | `probe` via sudo: identity `3367:1961` bcdDevice `0101`, usbPath `1-7:1.1`, hidraw `/dev/hidraw6`, enrolled true, helper 0.4.0 | pass — matches milestone-1 identity |
+| 24 | `probe` via sudo: identity `3367:1961` bcdDevice `0101`, enrolled true, helper 0.4.0 | pass — matches milestone-1 identity |
 | 25 | `status` via sudo while the mouse was awake: connected, link up, battery 70% fresh, charging=0, profile 1 | pass — charging=1 still unobserved (wireless link, never cabled) |
 | 26 | Full `read` via sudo: polling 1000, debounce 1, sleep 60, stages 400/800/1600/3200, currentStage 2 (1600 DPI), bindings identical to the milestone-1 dump incl. `(04,0A,03)` slot 7 and `(08,00,00)` slot 8 | pass — config matches the v0.1 capture; no drift in covered fields since |
 | 27 | `backup` ×4 over ~16 s after the mouse went idle | honest `asleep` (retryable) every time, zero writes, no state pollution (scratch state dir) |
-| 28 | Input-device census: `mouse0` (OP1we, event13) plus `mouse1`/`mouse2` (other devices) | recorded — explains v0.3 sleep: the user drives another mouse while the OP1we idles; timed drift re-reads need an operator wake of the OP1we specifically |
+| 28 | OP1we idle-state observation | recorded — timed drift re-reads require waking the OP1we before each read |
 
 No writes, no new opcodes, and no enrollment/permission changes were
 made in v0.3. The statically isolated CheckPsd query (opcode `0x01`,
@@ -79,6 +78,6 @@ CID/MID is `35:02`, matching OP1we. Repeated through the production parser
 with the same result. Production writes now require that result while holding
 the device lock. Physical wrong-model/charging/LOD tests remain unperformed.
 
-The user confirmed periodic panel shifting stopped after installing the fix
-and restarting the shell. Background polls no longer change foreground busy
+Periodic panel shifting stopped after installing the fix and restarting
+the shell. Background polls no longer change foreground busy
 state or shift controls.

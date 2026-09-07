@@ -215,7 +215,7 @@ class HidrawTransport:
         self.close()
 
     # Stale-input hygiene per exchange: bounded so a chatty node
-    # cannot spin a drain forever (F-010). Overflowing reports are
+    # cannot spin a drain forever. Overflowing reports are
     # still filtered by opcode on the read path.
     _DRAIN_CAP = 64
 

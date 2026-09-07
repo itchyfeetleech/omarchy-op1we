@@ -1,6 +1,6 @@
-# 0.4.0 development preview — release checklist
+# 0.4.0 development preview — verification record
 
-## Prepared release text
+## Supported preview
 
 OP1we Control 0.4.0 adds a native, theme-aware mouse diagram with annotated
 button dropdowns, a focused custom-binding editor, compact DPI stages and
@@ -14,27 +14,9 @@ actions, full physical button mapping, key/media trigger verification,
 wired/charging acceptance. Paired-model querying is now verified on OP1we
 and enforced before writes. See parity.md.
 
-## Marketplace submission draft
-
-- Name: OP1we Control
-- ID: hoppcx.op1we
-- Category: Hardware
-- Tags: Bar, Quickshell, Power management
-- Description: Native Omarchy OP1we battery widget and annotated mouse controls.
-- Preview: docs/preview.png (native themed render using fixture data)
-- Repository URL: https://github.com/itchyfeetleech/omarchy-op1we
-- Submission URL: pending — not submitted
-
-Requirements rechecked on 2026-09-07 against the
-[marketplace publishing guide](https://plugins.omarchy.org/publish.html):
-public GitHub repository, root manifest, README/license and safe install/removal.
-Listings undergo automated validation and maintainer review; plugins run
-unsandboxed. Publication/submission remains a separate release action as
-specified in PLAN.md. Do not publish a full-parity claim for this preview.
-
 ## Acceptance record
 
-- Native renderer: isolated Quickshell, current Omarchy theme; live installed panel also checked after one user-approved shell restart, with no plugin QML errors.
+- Native renderer: isolated Quickshell, current Omarchy theme; live installed panel also checked after a shell restart, with no plugin QML errors.
 - Live receiver access fixed on 2026-09-07: installed the narrow uaccess rule,
   reloaded udev and triggered the connected hidraw device. Normal-user status
   and configuration reads pass (already enrolled, 70% battery, 1600 DPI,
@@ -42,14 +24,13 @@ specified in PLAN.md. Do not publish a full-parity claim for this preview.
 - Periodic panel shifting fixed by excluding background status polls from
   foreground busy state and skipping polls during foreground operations.
   Plugin rescan retained cached QML; an Omarchy shell restart loaded the fix,
-  and the user confirmed the shifting stopped on 2026-09-07.
+  and the shifting stopped on 2026-09-07.
 - Preview: actual native panel capture with fixture configuration, not a hardware-write result.
 - 115 Python + 28 Node tests, native lint/manifest, shell/Python/udev checks passed.
 - Extracted archive installed/updated/removed with native validation in an isolated config directory; unrelated file preserved; archive audit/checksum passed.
 - Buttons, Sensitivity and Profiles pages visually checked; Buttons also checked at 200%.
-- CI workflow delivered; remote execution awaits a GitHub repository.
-- Publication authorized by the user on 2026-09-07 as a supported development
-  preview. Full driver parity is not claimed. Marketplace approval is external.
+- GitHub Actions runs the portable verification workflow on pushes and pull requests.
+- Full driver parity is not claimed. Marketplace listing requires maintainer approval.
 - Model query `35:02` confirmed twice read-only; all production writes now
   verify it under the device lock. Wrong-model, malformed and timeout replies
   are tested to perform zero writes.

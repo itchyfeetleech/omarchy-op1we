@@ -241,7 +241,7 @@ class ProfileTest(unittest.TestCase):
 
 
 class LostAckTransport(FakeTransport):
-    """Commits the first write, then loses its ACK (F-002 repro)."""
+    """Commits the first write, then loses its ACK."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -309,7 +309,7 @@ class FailWriteNTransport(FakeTransport):
 
 
 class WriteOnceTest(unittest.TestCase):
-    """F-002: uncertain writes are never replayed."""
+    """uncertain writes are never replayed."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -354,7 +354,7 @@ class WriteOnceTest(unittest.TestCase):
 
 
 class RevisionTest(unittest.TestCase):
-    """F-003: canonical revision covers payloads; apply requires it."""
+    """canonical revision covers payloads; apply requires it."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -420,7 +420,7 @@ class RevisionTest(unittest.TestCase):
 
 
 class RestoreGateTest(unittest.TestCase):
-    """F-001: restores translate to validated changes; unknowns preserved."""
+    """restores translate to validated changes; unknowns preserved."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -501,7 +501,7 @@ class RestoreGateTest(unittest.TestCase):
 
 
 class ClickSafetyTest(unittest.TestCase):
-    """F-004: usable-click quorum and install-before-remove order."""
+    """usable-click quorum and install-before-remove order."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
