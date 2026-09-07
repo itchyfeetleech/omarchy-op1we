@@ -87,15 +87,16 @@ record boundaries only, never field meaning.
 
 | Range | Contents | Status |
 |---|---|---|
-| `0x00-0x0B` | header: 6 value/complement pairs. `0x00` = polling mask one-hot (`01`=1000, `02`=500, `04`=250, `08`=125 Hz). Observed: `01 04 02 00 00 01` | polling proven (1000 Hz on unit); other pairs open (hypothesis: stages count / current stage / profile — one sample only, unconfirmed) |
-| `0x0C-0x2B` | CPI: 8 records `[x, y, mul, crc]`, `CPI = (x+1) * (50 or 100)` | proven: slots decode to 400/800/1600/3200/3200/3200/3200/3200, all CRCs valid, matching `DPIRANGE` and factory defaults. Multiplier packing per xm2we (`X_hw`, `mulX/Y` bits) not exercised on OP1we (all `mul=0x00`) |
+| `0x00-0x0B` | header: 6 value/complement pairs. `0x00` = polling mask one-hot (`01`=1000, `02`=500, `04`=250, `08`=125 Hz); `0x02` = CPI stage count (tentative: value 4 = DM, write test pending); `0x04` = current 0-based CPI stage (confirmed: 3 S2a matches + S2b); `0x06`/`0x08` unknown (0x00); `0x0A` unknown (observed 1→2 without host writes — not a profile mirror) | polling/debounce-writes verified (`0x00` write+readback via backend; polling also cycled 1000→250→1000 by the polling-switch action). Milestone-1 values: `01 04 02 00 00 01` |
+| `0x0C-0x2B` | CPI: 8 records `[x, y, mul, crc]`, `CPI = (x+1)*50` for `mul=0x00` | proven both directions for 50..10000 step 50 (write+readback via backend; slots 1-4 user-facing). Above-knee 10100..19000 needs multiplier-nibble packing whose value map is unproven (vendor DPIHW table) → rejected, never guessed. XY-split hidden (`ShowXY=0`): backend always writes x=y |
 | `0x2C-0x4B` | CPI indicator colours: 8 records `[r, g, b, crc]` | proven read-only: blue/green/yellow/red + red fill, all CRCs valid. The tool hides LED editing (`ShowDpiLED=0`), so writes are out of scope |
 | `0x4C-0x5F` | LED effect, two zones (`GetProfile` reads `0x4C-0x53`; apply path also writes `0x54`/`0x58`) | observed, undecoded; UI hidden (`ShowMainEffect=0`), out of scope |
-| `0x60-0x9F` | KeyMatrix: 16 records `[type, code, param, crc]` | `type 0x01` proven (mouse bitmask: `01` left, `02` right, `04` middle, `08` back, `10` forward). Types `0x02`/`0x04`/`0x07`/`0x08` observed with valid CRCs but undecoded — milestone 2 must resolve before button remapping ships |
+| `0x60-0x9F` | KeyMatrix: 16 records `[type, code, param, crc]` | `0x01` mouse bitmask proven; `0x02` CPI triad proven by behavior (`01`=toggle cycles+wrap, `02`=plus steps up, `03`=minus steps down); `0x07`=polling-switch proven (1000→250); `0x05`=key/combo/media + `0x100` payload (format proven, trigger unobserved); `0x00`=unassigned. `0x04` generic, `0x08` (emits stage echo), `0x09` (one polling delta seen) unconfirmed → preserved, never constructed. `0x06`/`0x0A` = macro (excluded) |
 | `0xA0-0xA7` | 8 bytes, layout unknown (`04 ff 00 ff 03 fc 54 00` on unit) | observed only; vendor apply path writes here for a 6-way sensor/LOD-style control — undecoded |
 | `0xA8` | separator `0x55`, excluded from vendor `GetProfile` ranges | observed |
-| `0xA9-0xB4` | 6 value/complement pairs: `01 00 06 00 00 01` on unit. `0xA9` = debounce ms | debounce proven incl. write/readback/restore; other pairs open (candidates: LOD, dormancy, report-rate — unconfirmed) |
-| `0x100+` | combo-key data (`GetComboKeyData`) | observed erased; populated only when combo keys are stored |
+| `0xA9-0xB4` | 6 value/complement pairs. `0xA9` = debounce ms (slider 0..30, default 3); `0xAB` unknown (0x00, preserved); `0xAD` = dormancy seconds/10 (default 60 s); `0xAF` = FixLine/angle-snap on/off; `0xB1` = ripple on/off; `0xB3` = turn-off-light-on-moving on/off | all six decoded from the vendor binary's GetProfile log strings (`Debounce=`, `Sleep Time=`×10, `FixLine=`, `Ripple=`, `Turn OFF Light On Moving=`); all but `0xAB` writable and verified on hardware |
+| `0xB5-0xB4+` | vendor apply writes `0xB5`/`0xB7`, but GetProfile never reads them | observed fully erased (`0xB5-0xD0` all `0xFF`); preserved verbatim, never written |
+| `0x100-0x27F` | type-5 key payloads: slot s (1..12) → `0x100+(s-1)*0x20`, 32 bytes: `[count, 3-byte events..., checksum]` | proven: single-key/combo (`0x81/0x80` downs, `0x41/0x40` ups, ≤3 keys + modifiers) and media (`0x82/0x42` + usage16, 18-entry vendor table); write+readback+parse verified on hardware; physical trigger not yet observed |
 
 Unit's full dump at capture time (mouse awake, all first-try reads):
 
@@ -134,6 +135,19 @@ Unit's full dump at capture time (mouse awake, all first-try reads):
 True length 9 bytes, content stable across hours and a receiver
 reset: `06 00 00 64 64 64 65 22 0b`. Meaning unknown; not part of
 the command protocol; recorded for future correlation only.
+
+## Firmware-managed drift (milestone-2 observation)
+
+Four bytes changed on-device without any host write during the
+milestone-2 test period: `0xA9` 1→3 (restored to 1 via `apply`;
+audited — no probe writes it), `0x0A` 1→2, `0xA0` 0x04→0x00,
+`0xA6` 0x54→0x58 (all three left as the firmware set them; unknown
+meaning, never written by the backend). Leading theory: side effect
+of special-action triggers (polling-switch cycled 1000→250→1000 in
+the same window). Consequence: config revisions can drift without
+host writes — the stale-revision check (re-read and retry) is the
+correct response, and unknown bytes are always preserved.
+Follow-up: re-read these addresses over time to pin the trigger.
 
 ## Transport boundary (implementation)
 

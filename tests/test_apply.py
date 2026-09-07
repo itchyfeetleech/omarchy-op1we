@@ -1,0 +1,251 @@
+"""Milestone-2 apply/reset/profile/listen tests over fake transports."""
+
+import os
+import tempfile
+import unittest
+
+from op1we import controller as controller_mod
+from op1we import device as device_mod
+from op1we import protocol
+from test_controller import IDENTITY, FakeTransport, load_eeprom
+
+
+class FlakyTransport(FakeTransport):
+    """Fault injection: drop N writes, corrupt readbacks, go dead."""
+
+    def __init__(self, *args, drop_writes=0, drop_all_writes=False,
+                 corrupt_readback=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.drop_writes = drop_writes
+        self.drop_all_writes = drop_all_writes
+        self.corrupt_readback = corrupt_readback
+
+    def exchange(self, opcode, payload=b"", timeout=2.0):
+        if opcode == protocol.OP_EEPROM_WRITE and (
+                self.drop_all_writes or self.drop_writes > 0):
+            self.drop_writes = max(0, self.drop_writes - 1)
+            raise device_mod.Op1weError("timeout", "dropped", retryable=True)
+        reply = super().exchange(opcode, payload, timeout)
+        if (self.corrupt_readback and opcode == protocol.OP_EEPROM_READ
+                and len(payload) >= 4 and payload[3] == 2
+                and (payload[1] << 8 | payload[2]) == protocol.ADDR_DEBOUNCE):
+            mut = bytearray(reply)
+            mut[6] ^= 0xFF
+            mut[16] = (0x55 - sum(mut[:16])) & 0xFF
+            return bytes(mut)
+        return reply
+
+
+class ApplyTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        os.environ["OP1WE_STATE_DIR"] = os.path.join(self.tmp.name, "state")
+        os.environ["OP1WE_RUNTIME_DIR"] = os.path.join(self.tmp.name, "run")
+
+    def test_full_apply(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        snap, chunks = ctl.apply(IDENTITY, {
+            "pollingHz": 500,
+            "cpi": [400, 800, None, 1600],
+            "debounceMs": 5,
+            "sleepS": 120,
+            "ripple": True,
+            "fixline": True,
+            "turnOffLight": False,
+            "keys": [{"slot": 12, "action": {"kind": "mouse", "buttons": ["left"]}}],
+        })
+        self.assertGreater(chunks, 0)
+        self.assertEqual(snap.polling_hz, 500)
+        self.assertEqual(snap.debounce_ms, 5)
+        self.assertEqual(snap.sleep_s, 120)
+        self.assertTrue(snap.ripple)
+        self.assertTrue(snap.fixline)
+        self.assertFalse(snap.turn_off_light)
+        self.assertEqual(fake.mem[0x00], 0x02)
+        self.assertEqual([(s.x, s.y) for s in snap.stages],
+                         [(400, 400), (800, 800), (1600, 1600), (1600, 1600)])
+        # Unknown bytes survive the edit.
+        before = load_eeprom()
+        for addr in (0xA0, 0xA1, 0xA6, 0xA7, 0xA8, 0xAB, 0x02, 0x04, 0x06, 0x08, 0x0A):
+            self.assertEqual(fake.mem[addr], before[addr], f"0x{addr:02x}")
+
+    def test_key_and_media_bind(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        snap, _ = ctl.apply(IDENTITY, {"keys": [
+            {"slot": 11, "action": {"kind": "key", "keys": [0x04]}},
+            {"slot": 12, "action": {"kind": "media", "usage": "play-pause"}},
+        ]})
+        bindings = {b.slot: b for b in snap.bindings}
+        # Snapshot re-reads payloads only for key-ref slots in config mem.
+        self.assertEqual(bindings[11].action["kind"], "key-ref")
+        self.assertEqual(bindings[12].action["kind"], "key-ref")
+        payload_addr = protocol.type5_addr(11)
+        count = fake.mem[payload_addr]
+        self.assertEqual(count, 2)
+        media_addr = protocol.type5_addr(12)
+        self.assertEqual(fake.mem[media_addr + 1], protocol.EV_MEDIA_DOWN)
+
+    def test_invalid_plan_writes_nothing(self):
+        for changes in ({"pollingHz": 2000},
+                        {"cpi": [25]},
+                        {"cpi": [10100]},
+                        {"debounceMs": 31},
+                        {"sleepS": 61},
+                        {"ripple": "yes"},
+                        {"keys": [{"slot": 1, "action": {"kind": "mouse", "buttons": ["nope"]}}]},
+                        {"keys": [{"slot": 13, "action": {"kind": "key", "keys": [4]}}]},
+                        {"keys": [{"slot": 1, "action": {"kind": "media", "usage": 1}}]},
+                        {"lod": 2},
+                        {"keys": "nope"}):
+            fake = FakeTransport(IDENTITY)
+            ctl = controller_mod.Controller(lambda ident: fake)
+            with self.assertRaises(device_mod.Op1weError, msg=str(changes)):
+                ctl.apply(IDENTITY, changes)
+            self.assertEqual(fake.writes, [], f"writes happened for {changes}")
+
+    def test_unsupported_action_writes_nothing(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        with self.assertRaises(device_mod.Op1weError) as ctx:
+            ctl.apply(IDENTITY, {"keys": [{"slot": 6, "action": {"kind": "special8"}}]})
+        self.assertEqual(ctx.exception.code, "unsupported")
+        self.assertEqual(fake.writes, [])
+
+    def test_named_specials_apply(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        snap, chunks = ctl.apply(IDENTITY, {"keys": [
+            {"slot": 12, "action": {"kind": "dpi-plus"}},
+            {"slot": 11, "action": {"kind": "polling-switch"}},
+        ]})
+        self.assertGreater(chunks, 0)
+        bindings = {b.slot: b for b in snap.bindings}
+        self.assertEqual(bindings[12].action["kind"], "dpi-plus")
+        self.assertEqual(bindings[11].action["kind"], "polling-switch")
+
+    def test_last_click_protected(self):
+        fake = FakeTransport(IDENTITY)
+        # Remove every left-click except slot 1, then try to unbind slot 1.
+        ctl = controller_mod.Controller(lambda ident: fake)
+        with self.assertRaises(device_mod.Op1weError) as ctx:
+            ctl.apply(IDENTITY, {"keys": [
+                {"slot": 1, "action": {"kind": "unassigned"}},
+                {"slot": 12, "action": {"kind": "unassigned"}},
+            ]})
+        # Slot 12 has no click; slot 1 holds the only left-click.
+        self.assertIn("left-click", ctx.exception.message)
+        self.assertEqual(fake.writes, [])
+
+    def test_stale_revision_writes_nothing(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        with self.assertRaises(device_mod.Op1weError) as ctx:
+            ctl.apply(IDENTITY, {"debounceMs": 2}, expected_revision="f" * 32)
+        self.assertEqual(ctx.exception.code, "stale-revision")
+        self.assertEqual(fake.writes, [])
+
+    def test_unacked_write_reports_failure(self):
+        fake = FlakyTransport(IDENTITY, drop_all_writes=True)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        with self.assertRaises(device_mod.Op1weError) as ctx:
+            ctl.apply_bytes(IDENTITY, {protocol.ADDR_DEBOUNCE: bytes([2, 0x53])},
+                            timeout=0.3)
+        self.assertEqual(ctx.exception.code, "write-failed")
+
+    def test_readback_mismatch_reports_failure(self):
+        fake = FlakyTransport(IDENTITY, corrupt_readback=True)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        with self.assertRaises(device_mod.Op1weError) as ctx:
+            ctl.apply_bytes(IDENTITY, {protocol.ADDR_DEBOUNCE: bytes([2, 0x53])},
+                            timeout=0.3)
+        self.assertEqual(ctx.exception.code, "verify-failed")
+
+    def test_reset_plans_documented_defaults(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        mem = ctl.read_memory(identity=IDENTITY)
+        writes = controller_mod.plan_reset(mem)
+        # Fixture state differs from defaults (debounce 1 vs 3, keys 7-10).
+        addrs = sorted(writes)
+        self.assertIn(protocol.ADDR_DEBOUNCE, addrs)
+        self.assertIn(0x78, addrs)  # slot 7 record
+        self.assertNotIn(protocol.ADDR_RIPPLE, addrs)  # preserved (no default)
+        snap, chunks, changed = ctl.restore_mem(
+            IDENTITY, self._reset_target(mem, writes))
+        self.assertTrue(changed)
+        self.assertEqual(snap.debounce_ms, 3)
+
+    def _reset_target(self, mem, writes):
+        target = dict(mem)
+        for addr, data in writes.items():
+            for k, byte in enumerate(data):
+                target[addr + k] = byte
+        return target
+
+
+class ProfileTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        os.environ["OP1WE_STATE_DIR"] = os.path.join(self.tmp.name, "state")
+        os.environ["OP1WE_RUNTIME_DIR"] = os.path.join(self.tmp.name, "run")
+
+    def test_save_list_show_delete(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        mem = ctl.read_memory(identity=IDENTITY)
+        info = controller_mod.save_profile(IDENTITY, "work", mem)
+        self.assertEqual(info["name"], "work")
+        self.assertEqual(oct(os.stat(info["path"]).st_mode & 0o777), "0o600")
+        names = [p["name"] for p in controller_mod.list_profiles()]
+        self.assertEqual(names, ["work"])
+        loaded, payload = controller_mod.load_profile_bytes("work")
+        self.assertEqual(loaded, mem)
+        controller_mod.delete_profile("work")
+        self.assertEqual(controller_mod.list_profiles(), [])
+        with self.assertRaises(device_mod.Op1weError):
+            controller_mod.load_profile_bytes("work")
+
+    def test_bad_names_rejected(self):
+        for bad in ("", "../x", "a/b", "x" * 65):
+            with self.assertRaises(device_mod.Op1weError, msg=bad):
+                controller_mod.validate_profile_name(bad)
+
+
+class ListenTest(unittest.TestCase):
+    def test_stage_frames_filtered(self):
+        import socket
+        import threading
+        # DGRAM preserves report boundaries like hidraw reads do.
+        local, peer = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.addCleanup(local.close)
+        self.addCleanup(peer.close)
+        transport = device_mod.HidrawTransport(IDENTITY)
+        transport._fd = local.fileno()
+        # NOTE: keep transport un-closed (socket owned by the test).
+        good = bytes([0x09, 0x0A, 0, 0, 0, 0x0A, 0x01, 0x02, 0x01]
+                     + [0] * 7)
+        good = good + bytes([(0x55 - sum(good)) & 0xFF])
+        other = bytes([0x09, 0x04, 0, 0, 0, 0x02, 0x46, 0x00] + [0] * 8)
+        other = other + bytes([(0x55 - sum(other)) & 0xFF])
+
+        def feed():
+            peer.send(other)  # valid frame, wrong opcode: skipped
+            peer.send(good)  # valid stage notification: kept
+            peer.send(b"short")  # runt: skipped
+        timer = threading.Timer(0.1, feed)
+        timer.start()
+        try:
+            events = device_mod.HidrawTransport.listen_stage(transport, 0.5)
+        finally:
+            timer.join()
+            transport._fd = None
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["stage"], 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

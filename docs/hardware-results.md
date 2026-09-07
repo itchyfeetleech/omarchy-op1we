@@ -26,3 +26,23 @@ Suspected-firmware note: none of the checks above modified unknown
 bytes; the only writes were the documented debounce pair, restored
 afterwards. The bootloader incident (11) was followed by a
 byte-identical re-read of header/CPI/debounce.
+
+## v0.2 — button meanings + full backend acceptance (milestone 2)
+
+| # | Check | Result |
+|---|---|---|
+| 14 | S1: slot 4 disable → BACK presses produce no HID; restore verified | pass — slot 4 = Back |
+| 15 | S1: `0xB5–0xD0` reads fully erased (`0xFF`) | pass — preserved, never written |
+| 16 | S2a: `(02,01/02/03)` bound to BACK in turn → stages cycle+wrap / step up / step down; `0x04` matches each end stage (3/3) | pass — toggle/plus/minus + `0x04` current-stage read |
+| 17 | S2a: `(07,00,00)` → polling 1000→250, read back | pass — polling-switch |
+| 18 | S2a/S2b: `(08,00,00)` → stage-echo notifications only, no config/HID delta | recorded — meaning unconfirmed |
+| 19 | S2a/S2b: `(09,00,00)` → one polling delta 250→1000 over 2 presses (S2a); silence on tap+hold (S2b, no polling re-read) | recorded — unconfirmed, needs a clean single-press test |
+| 20 | Backend accept via delivered CLI: enroll, backup, one 14-chunk apply (polling 500, CPI 800/1600/3200/6400, debounce 2, sleep 120, ripple+fixline on, turn-off off, slot12 mouse-left, slot11 dpi-plus, slot10 key `a` + payload) | pass — snapshot verifies every field; type-5 payload parses back (`key [0x04]`) |
+| 21 | Same session: restore backup → revision returns to pre-apply value; full read verifies originals | pass — 13-chunk restore, byte-identical revision |
+| 22 | Debounce restored 3→1 ms via `apply` (1 chunk, verified) | pass |
+| 23 | Post-session diff vs milestone-1 backup: `0x0A` 1→2, `0xA0` 04→00, `0xA6` 54→58 changed without host writes (audited); `0xA9` 1→3 likewise (restored) | recorded as firmware-managed drift (see `protocol.md`); device healthy, all controls decode |
+
+Type-5 note: write+readback+parse proven (check 20); the physical
+press→HID observation was deliberately not scheduled (operator
+fatigue) and is queued as a 30-second follow-up. Stage restored to
+2 and slot 4 to `(01,08,00)` at session end.

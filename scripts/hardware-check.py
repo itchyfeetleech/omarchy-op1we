@@ -59,9 +59,20 @@ def main():
         return 1
     ok &= check("polling valid", snap.polling_hz in (125, 250, 500, 1000), f"{snap.polling_hz} Hz")
     stages = [(s.x, s.y) for s in snap.stages]
-    ok &= check("CPI stages decode", stages == EXPECTED_DEFAULTS, str(stages))
+    ok &= check("CPI stages decode", all(s.encodable for s in snap.stages), str(stages))
     ok &= check("debounce decoded", snap.debounce_ms is not None, f"{snap.debounce_ms} ms")
     ok &= check("profile decoded", snap.profile is not None, f"profile={snap.profile}")
+    ok &= check("sleep decoded", snap.sleep_s is not None, f"{snap.sleep_s} s")
+    ok &= check("flags decoded", snap.ripple is not None and snap.fixline is not None
+                and snap.turn_off_light is not None,
+                f"ripple={snap.ripple} fixline={snap.fixline} turnOff={snap.turn_off_light}")
+    ok &= check("current stage/DPI measured",
+                snap.current_stage is not None and snap.current_dpi is not None,
+                f"stage={snap.current_stage} dpi={snap.current_dpi}")
+    kinds = {}
+    for binding in snap.bindings:
+        kinds[binding.action.get("kind")] = kinds.get(binding.action.get("kind"), 0) + 1
+    print(f"[INFO] binding kinds: {kinds}")
 
     mem = ctl.read_memory(identity)
     backup_path = ctl.write_backup_file(identity, mem)
@@ -76,20 +87,14 @@ def main():
     if observed is None:
         print("[FAIL] cannot demo without a decoded debounce value")
         return 1
-    # Provenance gate: the demo may only write values that are either
-    # currently observed on this device or the documented tool default.
-    proven = {observed, settings_mod.CAPABILITIES.debounce_default_ms}
-    candidates = sorted(proven - {observed})
-    if not candidates:
-        print(f"[SKIP] debounce is {observed} ms with no second proven value; skipping demo")
-        return 0 if ok else 1
-    target = candidates[0]
+    # Milestone-2 range is proven (0..30 ms); pick a nearby value.
+    target = observed + 1 if observed < 30 else observed - 1
     print(f"Demo: debounce {observed} ms -> {target} ms -> readback -> restore {observed} ms.")
     answer = input("Type YES to proceed (mouse must stay awake; keep moving it): ").strip()
     if answer != "YES":
         print("aborted by operator")
         return 1
-    change = settings_mod.DebounceChange(value_ms=target, proven_values=frozenset(proven))
+    change = settings_mod.DebounceChange(value_ms=target)
     try:
         change.validate()
     except ValueError as exc:
@@ -106,8 +111,7 @@ def main():
                                 expected_revision=revision)
         ok &= check("write+readback", after.debounce_ms == target, f"debounce={after.debounce_ms}")
         revision2 = protocol.config_revision(after.raw)
-        restore = settings_mod.DebounceChange(value_ms=observed,
-                                              proven_values=frozenset(proven))
+        restore = settings_mod.DebounceChange(value_ms=observed)
         final = ctl.apply_bytes(identity, {protocol.ADDR_DEBOUNCE: restore.encoded()},
                                 expected_revision=revision2)
         ok &= check("restore+readback", final.debounce_ms == observed,

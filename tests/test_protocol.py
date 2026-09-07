@@ -164,11 +164,23 @@ class EepromDecodeTest(unittest.TestCase):
         self.assertTrue(decoded["checksum_ok"])
         fifth = bytes(mem[0x70 + k] for k in range(4))
         self.assertEqual(protocol.decode_key_record(fifth)["buttons"], ["forward"])
-        # Undecoded types are reported, never mapped.
+        # Behavior-confirmed special types decode to named actions.
         sixth = bytes(mem[0x74 + k] for k in range(4))
         decoded6 = protocol.decode_key_record(sixth)
-        self.assertEqual(decoded6["kind"], "unknown")
+        self.assertEqual(decoded6["kind"], "dpi-toggle")
         self.assertTrue(decoded6["checksum_ok"])
+        self.assertEqual(protocol.encode_key_record("dpi-toggle"), sixth)
+        self.assertEqual(protocol.encode_key_record("dpi-plus"),
+                         bytes([0x02, 0x02, 0x00, 0x51]))
+        self.assertEqual(protocol.encode_key_record("dpi-minus"),
+                         bytes([0x02, 0x03, 0x00, 0x50]))
+        self.assertEqual(protocol.encode_key_record("polling-switch"),
+                         bytes([0x07, 0x00, 0x00, 0x4E]))
+        # Still-unconfirmed specials keep neutral kinds, never mapped.
+        eighth = bytes(mem[0x7C + k] for k in range(4))
+        self.assertEqual(protocol.decode_key_record(eighth)["kind"], "special8")
+        with self.assertRaises(ValueError):
+            protocol.encode_key_record("special8")
         empty = bytes(mem[0x8C + k] for k in range(4))
         self.assertEqual(protocol.decode_key_record(empty)["kind"], "unassigned")
 

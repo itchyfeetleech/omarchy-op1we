@@ -73,6 +73,84 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 3)
         self.assertEqual(doc["error"]["code"], "not-enrolled")
 
+    def run_cli_stdin(self, argv, stdin_bytes):
+        import io
+        import json as json_mod
+        buf = io.StringIO()
+        fake_stdin = io.TextIOWrapper(io.BytesIO(stdin_bytes), encoding="utf-8")
+
+        class StdinProxy:
+            buffer = fake_stdin.buffer
+
+        with mock.patch("op1we.device.discover", return_value=IDENTITY), \
+             mock.patch("op1we.controller.real_controller",
+                        return_value=__import__("op1we.controller", fromlist=["Controller"]).Controller(
+                            lambda ident: self.fake)), \
+             mock.patch.object(cli.sys, "stdin", StdinProxy()), \
+             redirect_stdout(buf):
+            code = cli.main(argv)
+        out = buf.getvalue().strip().splitlines()
+        self.assertEqual(len(out), 1)
+        return code, json_mod.loads(out[0])
+
+    def test_apply_stdin_round_trip(self):
+        self.run_cli(["enroll", "--confirm"])
+        revision = None
+        code, doc = self.run_cli(["read"])
+        revision = doc["data"]["revision"]
+        req = {"apiVersion": 1, "expectedRevision": revision,
+               "changes": {"debounceMs": 7, "pollingHz": 250}}
+        code, doc = self.run_cli_stdin(["apply"], json.dumps(req).encode())
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["data"]["applied"])
+        self.assertEqual(doc["data"]["snapshot"]["debounceMs"], 7)
+        self.assertEqual(doc["data"]["snapshot"]["pollingHz"], 250)
+
+    def test_apply_rejects_bad_stdin(self):
+        self.run_cli(["enroll", "--confirm"])
+        code, doc = self.run_cli_stdin(["apply"], b"not json")
+        self.assertEqual(code, 2)
+        code, doc = self.run_cli_stdin(["apply"], b"x" * (cli.STDIN_MAX_BYTES + 1))
+        self.assertEqual(code, 2)
+        code, doc = self.run_cli_stdin(
+            ["apply"], json.dumps({"apiVersion": 99, "changes": {}}).encode())
+        self.assertEqual(code, 2)
+        # Zero writes for all of the above.
+        self.assertEqual(self.fake.writes, [])
+
+    def test_apply_rejects_stale_and_mismatch(self):
+        self.run_cli(["enroll", "--confirm"])
+        req = {"apiVersion": 1, "expectedRevision": "0" * 32,
+               "changes": {"debounceMs": 2}}
+        code, doc = self.run_cli_stdin(["apply"], json.dumps(req).encode())
+        self.assertEqual(code, 4)
+        req = {"apiVersion": 1, "deviceFingerprint": "other",
+               "changes": {"debounceMs": 2}}
+        code, doc = self.run_cli_stdin(["apply"], json.dumps(req).encode())
+        self.assertEqual(code, 2)
+        self.assertEqual(self.fake.writes, [])
+
+    def test_reset_and_profile_cycle(self):
+        self.run_cli(["enroll", "--confirm"])
+        code, doc = self.run_cli(["profile", "save", "--name", "orig"])
+        self.assertEqual(code, 0)
+        code, doc = self.run_cli(["profile", "list"])
+        self.assertEqual([p["name"] for p in doc["data"]["profiles"]], ["orig"])
+        # Change something, then reset to documented defaults.
+        req = {"apiVersion": 1, "changes": {"debounceMs": 9}}
+        code, doc = self.run_cli_stdin(["apply"], json.dumps(req).encode())
+        self.assertEqual(code, 0)
+        code, doc = self.run_cli(["reset"])
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["data"]["reset"])
+        self.assertEqual(doc["data"]["snapshot"]["debounceMs"], 3)
+        # Profile round-trips the pre-reset state back.
+        code, doc = self.run_cli(["profile", "apply", "--name", "orig"])
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["data"]["restored"])
+        code, doc = self.run_cli(["profile", "delete", "--name", "orig"])
+        self.assertEqual(code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

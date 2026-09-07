@@ -215,6 +215,35 @@ class HidrawTransport:
             except OSError:
                 break
 
+    def listen_stage(self, timeout: float) -> list[dict]:
+        """Pure listen for unsolicited CPI-stage notifications (sends nothing).
+
+        Returns [{stage, at}] for each valid 0x0A frame within timeout.
+        """
+        if self._fd is None:
+            raise Op1weError("unavailable", "transport is not open")
+        self._drain()
+        found: list[dict] = []
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            remaining = max(0.0, deadline - time.monotonic())
+            if not select.select([self._fd], [], [], min(0.2, remaining))[0]:
+                continue
+            try:
+                report = os.read(self._fd, 64)
+            except OSError:
+                continue
+            if len(report) != protocol.FRAME_LEN or not protocol.frame_is_valid(report):
+                continue
+            if report[1] != protocol.OP_NOTIFY_STAGE:
+                continue
+            try:
+                stage = protocol.parse_stage_notification(bytes(report))
+            except ValueError:
+                continue
+            found.append({"stage": stage, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
+        return found
+
     def exchange(self, opcode: int, payload: bytes = b"", timeout: float = 2.0) -> bytes:
         """One drained command round-trip; skips unsolicited notifications.
 

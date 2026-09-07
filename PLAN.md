@@ -1,9 +1,10 @@
 # OP1we Control — implementation plan
 
-Planning date: 2026-09-07. Milestone 1 implementation: **complete
-2026-09-07** (evidence in `docs/`, minimal helper in `backend/`,
-33 hardware-free tests green). Milestones 2–4: **not started**.
-Pinned versions and evidence index: `docs/device.md`.
+Planning date: 2026-09-07. Milestone 1: **complete 2026-09-07**.
+Milestone 2: **complete 2026-09-07** (full backend: stdin `apply`,
+`reset`, `listen`, host-side `profile`; 67 hardware-free tests
+green; live acceptance via delivered CLI). Milestones 3–4: **not
+started**. Pinned versions and evidence index: `docs/device.md`.
 
 ## Scope and evidence
 
@@ -148,6 +149,46 @@ Device left in its original state. No speculative UI was built.
 Implement all proven non-macro settings and actions, profiles according to their observed device/host storage semantics, reset, explicit backup/restore, conflict checks, bounded I/O, and verified writes. Implement JSON API and fake-transport test suite.
 
 **Accept:** every required parity row has a backend operation and fixture test; invalid/stale/unsupported requests perform zero writes; unknown bytes survive edits; failed/partial writes never report success; physical changes work, persist as the original tool does, and can be restored. Current DPI is measured/read, never guessed from the first stage.
+
+**Result: met with documented scope cuts.** Delivered: validated
+stdin `apply` (polling, CPI ≤10000, debounce 0..30, sleep, ripple,
+fixline, turn-off-light, full key bindings incl. type-5 key/combo/
+media), `reset` (documented-defaults subset), `listen` (stage
+stream), host-side `profile` (save/list/show/delete/export/import/
+apply), fake-transport failure suite (stale revision, dropped
+writes, readback mismatch, asleep, lock contention, malformed/
+oversized stdin, last-click protection) — 67 tests green.
+Live acceptance: one 14-chunk apply verified every field, restore
+returned the byte-identical revision; `read` reports measured
+`currentDpi` from `0x04` (confirmed) + `0x0A` stream. Required rows
+without a safe operation fail closed with `unsupported` and zero
+writes (never constructed): LOD/`0xA0` block, `04`-generic,
+`08`/`09` specials, CPI above knee, `0x02` count (read-only).
+
+**Material decisions (milestone 2):**
+- Button meanings came from short behavior tests on the BACK rig
+  (slot 4 = Back proven): `(02,01/02/03)` = toggle/plus/minus,
+  `(07,00)` = polling-switch, `0x04` = current stage. `(08,00)`
+  (stage echo only) and `(09,00)` (one confounded polling delta)
+  stay neutral/preserved with queued single-press follow-ups.
+- Type-5 key/combo/media format fully decoded from the vendor
+  builder (event opcodes, ≤3 keys + modifiers, 18-entry media
+  table, 32-byte slot cap, KM=12 payload bound); write+readback+
+  parse proven on hardware, physical trigger unobserved (no user
+  session spent — 30 s follow-up).
+- Debounce 0..30 ms proven from `DebounceRange=0x1E00`
+  (max, min); sleep byte = seconds/10 both directions (full
+  0..2550 range; vendor slider max unconfirmed); `ShowXY=0` and
+  `ShowMotionSync=0` move XY-split and motion-sync to absent.
+- Above-knee CPI rejected (multiplier-nibble value map unproven);
+  `0xAB`/`0xB5`/`0xB7` (erased, GetProfile never reads them)
+  preserved verbatim; device profile count = 1 (`0x10` never sent).
+- Firmware-managed drift observed: `0x0A`/`0xA0`/`0xA6` (+`0xA9`,
+  restored) changed without host writes (audited) — left as the
+  firmware set them; revisions can drift, stale-revision retry is
+  the answer. The `0x0A`-as-profile-mirror hypothesis is rejected.
+- Full slot→physical rotation abandoned for operator fatigue;
+  only slot 4 = Back is proven (sessions kept to ~90 s each).
 
 ### 3. Native widget and full popout — not started
 

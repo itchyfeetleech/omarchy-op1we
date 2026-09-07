@@ -30,6 +30,13 @@ Never persist `/dev/hidrawN` as identity: node numbers churn on replug
 (proven by the unbind/bind reconnect test, which re-enumerated on new
 device numbers).
 
+Physical mapping (partial, milestone 2): KeyMatrix slot 4 drives the
+Back side-button (proven by a disable test [HW S1]). Slots 1–3 and 5
+hold the identity mouse mapping (likely Left/Right/Middle/Forward in
+order — untested). Slots 6–11 have unknown physical targets (the full
+rotation test was abandoned for operator fatigue); bindings on
+unconnected slots are inert but round-trip.
+
 ## Wired mode (unverified)
 
 `Cfg.ini` lists wired PIDs `0x1960,0x1962` and receiver `PID2=0x1961`.

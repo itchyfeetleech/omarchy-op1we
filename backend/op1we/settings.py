@@ -1,9 +1,8 @@
 """Typed settings, verified limits, and validation.
 
-Milestone-1 rule: only fields with hardware evidence are modeled, and
-only the debounce pair is writable through the internal apply path
-(restore uses the same path with backup-file provenance). Everything
-else raises instead of guessing.
+Only fields with hardware or binary evidence are modeled. Anything
+else raises instead of guessing. TENTATIVE header-byte meanings stay
+read-only until the behavior tests in docs/parity.md confirm them.
 """
 
 from __future__ import annotations
@@ -15,20 +14,37 @@ from . import protocol
 
 @dataclass(frozen=True)
 class Capabilities:
-    """Firmware-supported values frozen from milestone-1 evidence."""
+    """Firmware-supported values frozen from milestone-1/2 evidence."""
 
     polling_hz: tuple[int, ...] = (125, 250, 500, 1000)
     dpi_min: int = protocol.DPI_MIN
-    dpi_knee: int = protocol.DPI_KNEE
-    dpi_step_lo: int = protocol.DPI_STEP_LO
-    dpi_above: int = protocol.DPI_ABOVE
-    dpi_max: int = protocol.DPI_MAX
-    dpi_step_hi: int = protocol.DPI_STEP_HI
+    dpi_max_encodable: int = protocol.DPI_KNEE  # mul packing unproven above
+    dpi_step: int = protocol.DPI_STEP_LO
     dpi_stages: int = 4
-    # Debounce range is NOT established (observed 1 ms, tool default
-    # 3 ms); milestone-1 writes are limited to values with provenance
-    # (previously observed on this device or the documented default).
+    debounce_min_ms: int = protocol.DEBOUNCE_MIN_MS
+    debounce_max_ms: int = protocol.DEBOUNCE_MAX_MS
     debounce_default_ms: int = 3
+    sleep_max_s: int = protocol.SLEEP_MAX_S
+    sleep_step_s: int = 10
+    sleep_default_s: int = 60
+    key_slots: int = protocol.KEY_SLOTS
+    key_ui_slots: int = protocol.KEY_UI_SLOTS
+
+    def describe(self) -> dict:
+        return {
+            "pollingHz": list(self.polling_hz),
+            "dpiMin": self.dpi_min,
+            "dpiMaxEncodable": self.dpi_max_encodable,
+            "dpiStep": self.dpi_step,
+            "dpiStages": self.dpi_stages,
+            "debounceMinMs": self.debounce_min_ms,
+            "debounceMaxMs": self.debounce_max_ms,
+            "sleepMaxS": self.sleep_max_s,
+            "sleepStepS": self.sleep_step_s,
+            "keySlots": self.key_slots,
+            "keyUiSlots": self.key_ui_slots,
+            "mediaUsages": sorted(protocol.MEDIA_USAGES),
+        }
 
 
 CAPABILITIES = Capabilities()
@@ -46,8 +62,17 @@ class Status:
 @dataclass(frozen=True)
 class CpiStage:
     index: int  # 0-based
-    x: int
-    y: int
+    x: int | None  # None when the record uses unproven packing
+    y: int | None
+    raw: str = ""  # hex of the 4-byte record when undecodable
+    encodable: bool = True
+
+
+@dataclass(frozen=True)
+class ButtonBinding:
+    slot: int  # 1-based
+    action: dict  # ButtonAction JSON (see protocol.decode_key_record)
+    payload: dict | None = None  # type-5 payload decode (slots 1..12)
 
 
 @dataclass(frozen=True)
@@ -56,10 +81,18 @@ class SettingsSnapshot:
     revision: str
     polling_hz: int | None
     debounce_ms: int | None
+    sleep_s: int | None
+    ripple: bool | None
+    fixline: bool | None
+    turn_off_light: bool | None
     profile: int | None
+    stage_count: int | None  # TENTATIVE (0x02) until behavior test
+    current_stage: int | None  # TENTATIVE (0x04) until behavior test
+    current_dpi: int | None  # stages[current_stage].x when both known
     stages: tuple[CpiStage, ...]
+    bindings: tuple[ButtonBinding, ...] = ()
     # Raw config bytes (unknown regions preserved verbatim).
-    raw: dict[int, int] = field(compare=False)
+    raw: dict[int, int] = field(default_factory=dict, compare=False)
 
     def describe(self) -> dict:
         return {
@@ -67,53 +100,120 @@ class SettingsSnapshot:
             "revision": self.revision,
             "pollingHz": self.polling_hz,
             "debounceMs": self.debounce_ms,
+            "sleepS": self.sleep_s,
+            "ripple": self.ripple,
+            "fixline": self.fixline,
+            "turnOffLight": self.turn_off_light,
             "profile": self.profile,
+            "stageCount": self.stage_count,
+            "currentStage": self.current_stage,
+            "currentDpi": self.current_dpi,
             "stages": [
-                {"index": s.index, "x": s.x, "y": s.y} for s in self.stages
+                {"index": s.index, "x": s.x, "y": s.y,
+                 "raw": s.raw, "encodable": s.encodable}
+                for s in self.stages
+            ],
+            "bindings": [
+                {"slot": b.slot, "action": b.action, "payload": b.payload}
+                for b in self.bindings
             ],
         }
 
 
-def snapshot_from_memory(fingerprint: str, mem: dict[int, int], profile: int | None) -> SettingsSnapshot:
+def _flag(mem: dict[int, int], addr: int) -> bool | None:
+    value = protocol.decode_pair(mem, addr)
+    if value is None or value not in (0, 1):
+        return None
+    return bool(value)
+
+
+def snapshot_from_memory(
+    fingerprint: str,
+    mem: dict[int, int],
+    profile: int | None,
+    type5: dict[int, bytes] | None = None,
+) -> SettingsSnapshot:
     """Decode observed memory. Unknown/undecodable fields become None (never guessed)."""
     polling = protocol.decode_polling_hz(mem)
     debounce = protocol.decode_pair(mem, protocol.ADDR_DEBOUNCE)
+    sleep = protocol.decode_sleep_s(mem)
+    ripple = _flag(mem, protocol.ADDR_RIPPLE)
+    fixline = _flag(mem, protocol.ADDR_FIXLINE)
+    turn_off = _flag(mem, protocol.ADDR_TURN_OFF_LIGHT)
+    stage_count = protocol.decode_pair(mem, protocol.ADDR_STAGE_COUNT)
+    current_stage = protocol.decode_pair(mem, protocol.ADDR_CURRENT_STAGE)
     stages: list[CpiStage] = []
     for index in range(CAPABILITIES.dpi_stages):
         base = protocol.ADDR_CPI + index * protocol.CPI_RECORD_LEN
         cells = [mem.get(base + k) for k in range(4)]
         if any(cell is None for cell in cells):
             break
+        raw = bytes(c for c in cells if c is not None)
         try:
-            x, y = protocol.decode_cpi_record(bytes(cells))
+            x, y = protocol.decode_cpi_record(bytes(raw))
         except ValueError:
-            break
-        stages.append(CpiStage(index=index, x=x, y=y))
+            stages.append(CpiStage(index=index, x=None, y=None,
+                                   raw=bytes(raw).hex(), encodable=False))
+            continue
+        stages.append(CpiStage(index=index, x=x, y=y, encodable=True))
+    current_dpi: int | None = None
+    if (
+        current_stage is not None
+        and 0 <= current_stage < len(stages)
+        and stages[current_stage].x is not None
+    ):
+        stage = stages[current_stage]
+        assert stage.x is not None
+        current_dpi = stage.x
+    bindings: list[ButtonBinding] = []
+    for slot in range(1, protocol.KEY_SLOTS + 1):
+        base = protocol.ADDR_KEYS + (slot - 1) * protocol.KEY_RECORD_LEN
+        cells = [mem.get(base + k) for k in range(4)]
+        if any(cell is None for cell in cells):
+            continue
+        action = protocol.decode_key_record(bytes(c for c in cells if c is not None))
+        payload = None
+        if action.get("kind") == "key-ref" and type5 and slot in type5:
+            try:
+                payload = protocol.parse_type5_payload(type5[slot])
+            except ValueError:
+                payload = {"kind": "unknown", "detail": "short read"}
+        bindings.append(ButtonBinding(slot=slot, action=action, payload=payload))
     return SettingsSnapshot(
         fingerprint=fingerprint,
         revision=protocol.config_revision(mem),
         polling_hz=polling,
         debounce_ms=debounce,
+        sleep_s=sleep,
+        ripple=ripple,
+        fixline=fixline,
+        turn_off_light=turn_off,
         profile=profile,
+        stage_count=stage_count,
+        current_stage=current_stage,
+        current_dpi=current_dpi,
         stages=tuple(stages),
+        bindings=tuple(bindings),
         raw=dict(mem),
     )
 
 
 @dataclass(frozen=True)
 class DebounceChange:
-    """The sole milestone-1 forward write: debounce pair with provenance."""
+    """Debounce write within the proven 0..30 ms slider range."""
 
     value_ms: int
-    proven_values: frozenset[int]  # observed on device or documented default
 
     def validate(self) -> None:
-        if self.value_ms not in self.proven_values:
-            raise ValueError(
-                f"debounce {self.value_ms} ms has no provenance "
-                f"(known-good: {sorted(self.proven_values)}); refusing to guess a range"
-            )
+        protocol.encode_debounce_ms(self.value_ms)
 
     def encoded(self) -> bytes:
-        self.validate()
-        return bytes([self.value_ms, protocol.stored_checksum(self.value_ms)])
+        return protocol.encode_debounce_ms(self.value_ms)
+
+
+# Vendor-documented factory defaults (Cfg.ini + OPT defaults) used by
+# reset for covered fields only. Everything else is preserved.
+RESET_CPI = (400, 800, 1600, 3200)
+RESET_POLLING_HZ = 1000  # DR=0x1000
+RESET_DEBOUNCE_MS = 3  # Debounce=3
+RESET_SLEEP_S = 60  # SleepTime default
