@@ -151,6 +151,62 @@ host writes — the stale-revision check (re-read and retry) is the
 correct response, and unknown bytes are always preserved.
 Follow-up: re-read these addresses over time to pin the trigger.
 
+## Model query (CheckPsd — statically isolated, NOT hardware-confirmed)
+
+Reverse-engineered 2026-09-07 from the pinned vendor binary
+(`Endgame Gear WE Series.exe`, 2214400 bytes, sha256
+`a3ee798f…cb9b048`, from the hash-verified installer). The tool
+identifies the paired model on every device scan through `CheckPsd`
+(`.text:0x450e90`, single caller `0x40d2de`), matching the result
+against the `DEV_1`/`DEV_2` Cfg sections (`CID=0x35`, `MID=0x02` =
+OP1we / `MID=0x01` = XM2we). Wire format, derived from the
+`SendData` (`0x4511d0`) / `GetData` (`0x4510b0`) wrappers:
+
+- `SendData` takes a 15-byte payload (`PER_PAYLOAD` = 15, see the
+  `SendData Err: nSize>PER_PAYLOAD!` string) and emits feature report
+  `08 <15 payload bytes> <ck>` with the standard `0x55 - sum`
+  checksum. `GetData` reads one input report `0x09` (overlapped
+  `ReadFile`, 17 bytes) and extracts payload bytes.
+- CheckPsd sends opcode **`0x01`** with payload
+  `01 00 00 00 08 <cookie:4> 00 00 00 00 00 00`
+  (full report: `08` + those 15 bytes + checksum). The 4 cookie bytes
+  carry a host stack address in the vendor tool, so the device must
+  ignore them; a future probe should send zeros.
+- It reads a 15-byte reply (200 ms timeout, 3 retries) and requires
+  `reply[0]==0x01` (opcode echo) and `reply[1]==0x00`; then
+  `cid=reply[9]`, `mid=reply[10]` (logged via
+  `CheckPsd: cid=%x, mid=%x`). Expected on this unit: `cid=0x35`,
+  `mid=0x02`.
+- This explains the milestone-1 observation that opcode `0x01`
+  "answers an empty echo": we probed it with an empty payload, while
+  the vendor always sends the 15-byte query above.
+
+Status: static isolation only. Opcode `0x01` stays off the production
+allowlist until an authorized operator session sends the query above
+(read-only effect — the vendor tool sends it on every scan) and
+observes `cid/mid` on this OP1we. On confirmation, the helper can
+replace local-pairing enrollment with proven model discrimination;
+until then enrollment stays mandatory.
+
+## Vendor Cfg table mechanism (DPI, statically decoded)
+
+The tool builds its UI DPI list from the `DPIRANGE` Cfg key
+(`.text:0x44b7xx`: two min/max/step ranges with an exception-pair
+table) and reads two further optional keys per device section:
+`DPISET` (explicit UI list override) and `DPIHW` (explicit byte table
+of hardware encodings, length-checked against the UI list —
+`DPIHW Num` / `DPISET Num != DPIHW Num`). The shipped baseline
+`Cfg.ini` contains **neither** key, so the tool uses the default fill
+(`0x44ba9a`: `HW[i] = i+1` per UI-list position). Stored EEPROM `x`
+is therefore the 0-based UI-list index below the knee
+(`CPI=(x+1)*50`, consistent with the proven codec); the above-knee
+`mul`-nibble packing is computed in the stage-record apply path,
+which is not yet isolated — that function is the exact next static
+target for C1. `DPIH=64` is almost certainly a UI skin metric (DPI
+slider height, alongside `ptMark` and the other dialog metrics), not
+a hardware table: it is a single small constant with no code path
+into record building found.
+
 ## Transport boundary (implementation)
 
 `discover()` finds the single vendor node (see `device.md`);

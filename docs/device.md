@@ -83,9 +83,15 @@ cannot prove the paired mouse is an OP1we. Evidence gathered:
   identical (sensor `0x3370`, `DM=4`, same DPI table, same key
   defaults).
 - The tool reads CID/MID from the device (`CheckPsd`, `LoadCID ok`,
-  `Psd_Thread: unsupport dev`), but the exact command bytes were not
-  isolated in milestone 1 (static analysis reached the `SetFeature`
-  sender; the CheckPsd payload layout needs one more pass).
+  `Psd_Thread: unsupport dev`). The exact command bytes were
+  isolated statically on 2026-09-07 (see `protocol.md`): opcode
+  `0x01` with the 15-byte payload
+  `01 00 00 00 08 <cookie:4> 00 00 00 00 00 00`
+  (cookie is device-ignored; probe with zeros), expecting
+  `reply[0]==0x01`, `reply[1]==0x00`, `cid=reply[9]`,
+  `mid=reply[10]`. Hardware confirmation on this OP1we is still
+  pending (one read-only query in an authorized operator session);
+  opcode `0x01` stays off the production allowlist until then.
 - Behavioral difference observed on this unit: the underside mode
   button cycles **CPI stages** (unsolicited `0x0A` notifications,
   LED blue/green/yellow/red), while the xm2we reference documents the

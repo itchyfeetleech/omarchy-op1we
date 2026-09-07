@@ -37,7 +37,7 @@ wire).
 
 | # | Control | Disposition | Evidence / status |
 |---|---|---|---|
-| C1 | 4 CPI stages, values 50–10000 step 50 then 10100–19000 step 100 (`DM=4`, `DPIRANGE=50,10000,50,10100,19000,100`, defaults 400/800/1600/3200 [Cfg]) | required | **write-proven** for 50..10000 step 50 via backend apply+readback [HW accept]. Above-knee 10100..19000 rejected: multiplier-nibble value map unproven (vendor DPIHW table) — follow-up |
+| C1 | 4 CPI stages, values 50–10000 step 50 then 10100–19000 step 100 (`DM=4`, `DPIRANGE=50,10000,50,10100,19000,100`, defaults 400/800/1600/3200 [Cfg]) | required | **write-proven** for 50..10000 step 50 via backend apply+readback [HW accept]. Above-knee 10100..19000 rejected: multiplier-nibble value map unproven — narrowed 2026-09-07: the `DPIHW` Cfg table mechanism is decoded (optional key, absent in the shipped Cfg → `HW[i]=i+1` default; `DPIH=64` is a UI skin metric, not a table — see `protocol.md`), but the `mul` packing in the stage-record apply path is still unisolated (exact next static target), and any candidate still needs a hardware write/readback session |
 | C2 | Active stage + "CPI toggle" cycle incl. mode button (`SyncChangeDpiLevel`, `g_nCurDpiLevel` [Bin]; short-press cycles 400/800/1600/3200 [QSG]) | required | **proven** both paths: `0x04` header byte reads the 0-based stage (4 matches [HW S2a/S2b]) and unsolicited `0x0A` notifies changes [HW]. Backend `read` reports measured `currentDpi`; `listen` streams changes |
 | C3 | CPI stage count ("CPI Stages", `tc_adv_str19` [UI]) | required | **open**: `0x02` tentative (value 4 = DM); write test never ran (no user session spent). Read-only in backend |
 | C4 | X/Y independent CPI (`tc_msg19 "XY Independent"` [UI]; records carry separate x/y) | required | **absent**: `ShowXY=0` hides the toggle [Cfg]. Backend always writes x=y; decode shows both axes |
@@ -47,7 +47,7 @@ wire).
 | C8 | Dormancy/sleep time (byte = seconds/10, default 60 s [Bin+Cfg]) | required | **write-proven** for 0..2550 s step 10 via backend apply+readback [HW accept]. Vendor slider max unconfirmed (custom skin control) — backend takes the full byte range, documented |
 | C9 | Angle snapping (FixLine `0xAF`), ripple (`0xB1`), motion sync | required | **write-proven** for FixLine + ripple on/off via backend [HW accept]. Motion sync **absent** (`ShowMotionSync=0` [Cfg]). Sensor-mode register block (`0xA0`) open — see C7 |
 | C10 | CPI indicator colours/LED (`DC=` [Cfg]; `tc_msg22/23`, `DpiColorReadOnly` [UI+Bin]; blue/green/yellow/red [QSG]) | absent | **proven** read (colours decode [HW]) but editing is **hidden** (`ShowDpiLED=0` [Cfg]) — display only, no editor to reproduce |
-| C11 | Battery indicator (tray/skins `power*.png`; long-press mode button shows level by LED colour [QSG]) | required | **proven**: `0x04` percent + charging flag [HW]. Charging=1 never observed on OP1we (mouse never cabled during session) — verify in milestone 2/4 |
+| C11 | Battery indicator (tray/skins `power*.png`; long-press mode button shows level by LED colour [QSG]) | required | **proven**: `0x04` percent + charging flag [HW]. Charging=1 still unobserved: fresh read-only `status` 2026-09-07 reports 70% fresh, charging=0 (mouse on wireless link, never cabled) — needs an operator cable session |
 | C12 | Windows pointer settings (double-click speed, sensitivity, scrolling, precision: `tc_adv_str1–5` [UI]) | absent | OS settings, not device controls — nothing to reproduce on Linux |
 
 ### Macro page (`tc_page3` [UI]) — excluded
@@ -96,12 +96,32 @@ C8, C9 (FixLine/ripple), P1/P2/P3, K6 backend rule.
 Still open, each with a concrete next step (never guessing):
 - `08`/`09`/`04`-generic meanings: one single-press + config-delta
   test each (S2a/S2b evidence recorded in `hardware-results.md`).
+  Needs a physical operator pressing the bound button; static note:
+  shipped-Cfg K6–K10 defaults are type-`0x08` records, but the Cfg
+  encoding differs from EEPROM (e.g. K1 `01 11` vs stored `01 01`),
+  so the type-8 builder is still the static target.
 - Type-5 physical trigger: bind media/key, press once, capture the
-  HID report (format already proven).
+  HID report (format already proven). Needs a physical operator.
 - C3 (`0x02` stage count): write 2, cycle, count stages, restore.
-- C1 above-knee: find the DPIHW default table, validate one write.
-- C7 LOD + `0xA0` block: capture a vendor LOD toggle (Windows).
-- C5 report-timing cross-check for an absolute polling proof.
-- C11 charging=1 observation; CID/MID command isolation (lifts
-  enrollment); `0x06`/`0xAB`/`0x06-0x08` meanings; firmware-drift
-  trigger (`0x0A`/`0xA0`/`0xA6`/`0xA9` changed without host writes).
+  Unexercised vendor write — authorized operator session only.
+- C1 above-knee: `DPIHW` mechanism decoded 2026-09-07 (see
+  `protocol.md`); next static target is the `mul` packing in the
+  stage-record apply path, then one hardware write/readback to
+  validate. Still rejected until then.
+- C7 LOD + `0xA0` block: capture a vendor LOD toggle (Windows), or
+  isolate the `0xA0` apply writer statically. No change.
+- C5 report-timing cross-check for an absolute polling proof. OP1we
+  motion node identified read-only 2026-09-07
+  (`/dev/input/event13`, `mouse0`); needs operator movement plus a
+  polling write session (user lacks `input` group; node is
+  root-only for this user).
+- C11 charging=1 observation: needs an operator cable session.
+- CID/MID: command isolated statically 2026-09-07 (opcode `0x01`,
+  see `protocol.md`); next step is one read-only query in an
+  authorized operator session, then enrollment can be replaced by
+  proven discrimination.
+- `0x06`/`0xAB` meanings; firmware-drift trigger (`0x0A`/`0xA0`/
+  `0xA6` changed without host writes): timed re-reads blocked on
+  operator wake — the OP1we sleeps while the user drives one of two
+  other mice (`mouse1`/`mouse2`), and 4/4 backup attempts 2026-09-07
+  returned honest `asleep`.

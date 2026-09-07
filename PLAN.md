@@ -407,13 +407,132 @@ bash scripts/uninstall-dev.sh
 | Proprietary assets and upstream licensing | Ship original UI/icon and own screenshots; no vendor binaries; retain applicable upstream notices. |
 | GitHub owner and listing not established | Default ID uses local username; confirm availability before release. No branding service, website or marketing infrastructure required. |
 
-## Final verification (pending implementation)
+## Clean-project verification (2026-09-07, this session)
+
+Run from the repository root on the Omarchy target (quickshell 0.3.1,
+qmllint 6.11.2, CPython 3.14.7, Node v26.8.1; receiver `3367:1961`
+bcdDevice `0101` on bus 1 port 7, hidraw5/6 root-only). No optional
+features were added; no administrator action, shell restart, mouse
+write, publication or submission was performed.
+
+- `PYTHONPATH=backend python3 -m unittest discover -s tests -p
+  'test_*.py'` → **113 tests, OK** (~5 s).
+- `node --test tests/model.test.cjs` → **28 pass, 0 fail**.
+- `bash scripts/check.sh` → **all applicable checks passed**: 113
+  Python tests, `compileall`, shell syntax, `udevadm verify`, `omarchy
+  plugin validate .` (exit 0), `qmllint` exit 0 with 160 warnings and
+  **0 errors** (only the documented `missing-property`,
+  `unqualified` and `signal-handler-parameters` categories), 28 Node
+  tests.
+- `bash scripts/package.sh` → `dist/op1we-control-0.4.0.tar.gz` +
+  `.sha256`; `(cd dist && sha256sum -c
+  op1we-control-0.4.0.tar.gz.sha256)` → **OK**; 25 allowlisted files,
+  no symlinks.
+- Documented install on the live target: `bash
+  scripts/install-dev.sh` → installed (update path, no unmanaged
+  extras), exit 0; `omarchy plugin validate` on worktree and installed
+  copy exit 0; `omarchy-shell shell rescanPlugins` exit 0;
+  `listPlugins` shows `hoppcx.op1we` enabled.
+- Archive install/update/remove under an isolated `XDG_CONFIG_HOME`:
+  extract, install, reinstall and uninstall each exit 0; isolated copy
+  passes native validation; unrelated sentinel file preserved.
+- Read-only backend diagnostics: `probe` exit 0 (`3367:1961`,
+  bcdDevice `0101`, usbPath `1-7:1.1`, hidraw `/dev/hidraw6`,
+  enrolled true, helperVersion `0.4.0`; identical from the installed
+  copy); `status`/`read` exit 3 with code `permission` —
+  `/etc/udev/rules.d/70-op1we*` is absent and the nodes are root-only,
+  so hardware read/write acceptance stays pending. `scripts/hardware-check.py
+  --help` verified; the interactive write demo was not run.
+- Principal workflow on the live shell: `omarchy-shell shell toggle
+  hoppcx.op1we` open exit 0 → live helper `python3 -B -m op1we status
+  --request-id …` observed while open, `shell ping` ok; toggle close
+  exit 0, ping ok, no lingering helper process (no leak). A full live
+  edit→apply pass on awake hardware still needs the documented udev
+  step plus an operator mouse-wake. Hover tooltip verified in code as
+  "OP1we · battery · current DPI" (`qml/Model.js:tooltipFor`).
+- Publication: `git remote -v` is empty; nothing published or
+  submitted; the GitHub Actions workflow is authored but has not run
+  remotely. Full 1:1 parity stays blocked by the F-007 items above, and
+  publication needs a separately authorized release task.
+
+## Parity/publication advancement (2026-09-07, same day)
+
+No optional features added; prior verification results above stand
+unchanged. No mouse writes, no new opcodes on the wire, no udev or
+system change, no commit, no publication and no submission were made.
+
+**Static RE (hash-verified baseline installer, `915716f8…cf34f6`):**
+- CheckPsd/CID-MID command **isolated**: opcode `0x01`, 15-byte
+  payload `01 00 00 00 08 <cookie:4> 00 00 00 00 00 00`
+  (cookie device-ignored, probe with zeros), `PER_PAYLOAD=15`
+  framing confirmed; reply requires `reply[0]==0x01`,
+  `reply[1]==0x00`, `cid=reply[9]`, `mid=reply[10]`
+  (see `docs/protocol.md`). Hardware confirmation is one read-only
+  query in an authorized operator session; opcode `0x01` stays off
+  the production allowlist until then, and enrollment stays
+  mandatory.
+- `DPIHW` mechanism decoded: optional Cfg byte table, absent in the
+  shipped Cfg → `HW[i]=i+1` default, so stored `x` is the UI-list
+  index below the knee (consistent with the proven codec).
+  Above-knee `mul` packing is still unisolated (exact next static
+  target: the stage-record apply path) and still rejected for
+  writes. `DPIH=64` identified as a UI skin metric, not a table.
+- Shipped-Cfg K6–K10 defaults are type-`0x08` records, but the Cfg
+  encoding differs from EEPROM, so the type-8 builder remains the
+  static target; `08`/`09`/`04`-generic still need single-press
+  operator tests (see `docs/parity.md`).
+
+**Read-only hardware (sudo, `docs/hardware-results.md` v0.3):**
+`status` connected, 70% fresh, charging=0; full `read` matches the
+milestone-1 dump (polling 1000, debounce 1, stages 400–3200,
+currentStage 2); then 4/4 `backup` attempts returned honest
+`asleep`. Census shows `mouse0` (OP1we) plus `mouse1`/`mouse2`, so
+the OP1we idles while the user drives another mouse — timed drift
+re-reads and every press/cable/movement step need an operator
+session with the OP1we specifically. C5 motion node identified
+(`/dev/input/event13`); user lacks the `input` group.
+
+**Live UI pass (screenshots read back as images):** real-click/hover
+injection was attempted and **aborted as void** — the user is
+actively driving the mouse (cursor unstable between verified reads),
+so injected-click evidence would be non-causal; no further cursor
+input was sent. Instead, via IPC + screenshots: panel opens fully
+in <0.9 s and renders stably (3 frames over ~500 ms byte-identical;
+permission error + remedy, tabs, mouse outline, dropdowns,
+Apply/Cancel all themed and correct); a timer-driven helper
+`status` was observed while open (same path as middle-click
+refresh); the `--` label was verified magnified and toggles live
+via `omarchy bar set … --json` (bare `set false` stores the string
+`"false"`, which still evaluates true — CLI quirk, not a widget
+bug); `hide` verified closed visually and the desktop was left
+closed with the shell healthy. One earlier close-toggle appeared to
+fail but a controlled hide/re-toggle cycle proves open/close/hide
+all work — user interference during the window. Config delta:
+the bar entry now carries explicit `showPercent:true`
+(default-equivalent; was a bare `{"id"}` entry).
+
+**Publication readiness (all technical gates met, authorization
+pending):** 43 tracked files, `dist/` + caches ignored, secrets
+scan clean, manifest re-validated (exit 0), publishing guide
+rechecked 2026-09-07 (public repo, root manifest, README/license,
+safe install/removal, optional preview; submission is a manual
+issue form plus maintainer review). `gh` is authenticated
+(`itchyfeetleech`, `repo` scope; sibling precedent
+`itchyfeetleech/omarchy-corsair-headset`). Still required before
+any publish step: (1) owner/repo-name confirmation (`hoppcx.op1we`
+vs the `itchyfeetleech` account), (2) explicit authorization to
+create the public repo, push, and position version 0.4.0 preview,
+(3) the manual marketplace issue submission (user action) and
+external maintainer review. Working tree holds uncommitted doc
+updates only (kept uncommitted — no commit was requested).
+
+## Final verification
 
 | Check | Evidence required | Result |
 |---|---|---|
-| Protocol and non-macro parity | Completed parity matrix + hardware results on recorded firmware | Pending |
-| Automated tests/checks | Commands above, CI and native QML loading | Local checks passed; remote CI pending |
-| Fresh install/removal | Clean Omarchy user; narrowly scoped permissions; unrelated config preserved | Pending |
-| Main workflow and appearance | Real mouse, theme switch, scaling, reconnect, screenshots | Pending |
-| Package | Valid staged manifest, archive checksum, install from archive | Passed for 0.4.0 preview |
-| Publication | Public GitHub release URL and marketplace submission URL | Pending |
+| Protocol and non-macro parity | Completed parity matrix + hardware results on recorded firmware | Pending but narrowed 2026-09-07 (CheckPsd isolated statically, DPIHW mechanism decoded, v0.3 read-only; remaining rows need operator press/cable/movement/write sessions — see parity follow-ups) |
+| Automated tests/checks | Commands above, CI and native QML loading | Local pass 2026-09-07 (113 Python + 28 Node, check.sh, native manifest/QML lint, live IPC toggle); UI screenshot pass same day (stable render, timer refresh, label toggle, hide/close); remote CI pending |
+| Fresh install/removal | Clean Omarchy user; narrowly scoped permissions; unrelated config preserved | Isolated archive install/update/remove passed with sentinel preserved; live update + rescan passed; clean-user + udev-pending install still open (no admin action taken) |
+| Main workflow and appearance | Real mouse, theme switch, scaling, reconnect, screenshots | IPC open/close/hide verified visually; real-click injection aborted as void (active user); live edit→apply on awake hardware pending (permission + operator wake); earlier 100%/200% + theme evidence in docs/release.md |
+| Package | Valid staged manifest, archive checksum, install from archive | Passed for 0.4.0 preview (2026-09-07: archive + sha256 OK, 25 files, no symlinks) |
+| Publication | Public GitHub release URL and marketplace submission URL | Ready-blocked 2026-09-07 (all technical gates met; needs owner/name confirmation + explicit publish authorization + manual issue submission + external review) |

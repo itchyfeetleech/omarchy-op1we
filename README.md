@@ -54,8 +54,9 @@ but cannot detect same-port replacement/re-pairing; re-confirm after either.
 
 ## Use
 
-- Click the bar mouse icon to open the panel. Hover shows battery and DPI;
-  right-click toggles the percentage, middle-click refreshes.
+- Click the bar mouse icon to open the panel. Hover shows the mouse name,
+  battery status and current DPI; right-click toggles the percentage,
+  middle-click refreshes.
 - **Buttons:** choose assignments beside the mouse outline. Choose Custom
   binding for key/combo/media actions; use the binding picker for other slots.
 - **Sensitivity:** four DPI stages, polling, debounce, sleep, ripple,
@@ -80,6 +81,19 @@ Profiles and the latest ten recovery backups live in
 `$XDG_STATE_HOME/op1we-control` (default `~/.local/state/op1we-control`), with
 private directory/file permissions. Profiles are the plugin's JSON format,
 not vendor `.dct` files. Settings are never automatically replayed on reconnect.
+
+To diagnose the receiver without touching mouse settings, run from this
+directory (installed copy: `~/.config/omarchy/plugins/hoppcx.op1we`):
+
+```bash
+PYTHONPATH=backend python3 -m op1we probe
+PYTHONPATH=backend python3 -m op1we status
+PYTHONPATH=backend python3 -m op1we read
+```
+
+Each prints one JSON document; a `permission` error means the udev rule
+above is missing. Exit codes: 0 success, 2 invalid input, 3
+unavailable/permission/unsupported, 4 busy/conflict, 5 protocol failure.
 
 ## Remove
 

@@ -40,6 +40,10 @@ specified in PLAN.md. Do not publish a full-parity claim for this preview.
 - Extracted archive installed/updated/removed with native validation in an isolated config directory; unrelated file preserved; archive audit/checksum passed.
 - Buttons, Sensitivity and Profiles pages visually checked; Buttons also checked at 200%.
 - CI workflow delivered; remote execution awaits a GitHub repository.
+- Publication readiness rechecked 2026-09-07: 43 tracked files, no
+  secrets, `dist/` ignored, manifest valid; blocked only on
+  owner/name confirmation, explicit publish authorization, the manual
+  issue submission and external review (see PLAN.md).
 - Fresh-user physical installation, every remapped action, charging/wired,
   suspend/reconnect, report timing and full parity: pending operator/hardware work.
 
