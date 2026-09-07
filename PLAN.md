@@ -6,8 +6,10 @@ F-007, recorded 2026-09-07)** — the delivered backend work stands
 acceptance via delivered CLI), but both completion verdicts were
 overstated: required parity rows still lack proven encodings or
 backend operations (blockers itemized in the milestone sections).
-Milestones 3–4: **not started**. Pinned versions and evidence
-index: `docs/device.md`.
+Milestone 3: **delivered 2026-09-07 (UI complete; full
+effectiveness limited by inherited F-007 backend gaps — see the
+milestone section)**. Milestone 4: **not started**. Pinned versions
+and evidence index: `docs/device.md`.
 
 ## Scope and evidence
 
@@ -213,11 +215,82 @@ work stays gated behind them.
 - Full slot→physical rotation abandoned for operator fatigue;
   only slot 4 = Back is proven (sessions kept to ~90 s each).
 
-### 3. Native widget and full popout — not started
+### 3. Native widget and full popout — delivered (effectiveness limited by F-007)
 
 Implement themed mouse icon with percent/connection state, hover name/battery/current DPI, baseline-equivalent control groups, draft editing and Apply/Cancel. Include keyboard navigation, Escape/outside-click dismissal, keyboard-accessible restore/reset, busy/error/recovery states and reconnect refresh. No edits lost silently when switching profiles or closing a dirty form.
 
 **Accept:** complete install → status → hover → click → edit → apply workflow works on target hardware; all required non-macro controls are present and effective; physical DPI changes refresh on hover/open; off/sleep/unplug states do not show fabricated fresh values; theme changes apply live; panel fits the current display and remains usable at 100%/200% scale; repeated opens and multi-monitor use do not race writes or leak processes.
+
+**Result: delivered 2026-09-07; the "every required control
+effective" clause is NOT met — effectiveness stays limited by the
+inherited F-007 backend gaps, itemized below rather than claimed.**
+Delivered: `manifest.json` (`hoppcx.op1we` 0.3.0, `bar-widget`,
+`qml/BarWidget.qml`, right section), `qml/BarWidget.qml` (original
+Canvas mouse glyph + percent + status badge, tooltip, shell
+routing), `qml/Panel.qml` (hero, DPI/sensor/buttons/profiles/device
+sections, Apply/Cancel footer, ConfirmDialogs), `qml/Controller.qml`
+(argv-only helper calls, stdin apply, 30 s / 2 s-open timers,
+draft/confirmed state, stale/recovery handling), `qml/Model.js`
+(envelope/draft/diff/validation/labels) and `tests/model.test.cjs`
+(28 Node tests green). Proven-subset controls are fully editable
+(DPI ≤10000, polling, debounce, sleep, ripple/fixline/turn-off-light,
+12 button slots with mouse/key/combo/media/DPI/polling actions,
+host profiles, backup/restore/reset/enroll); F-007 rows render as
+explicitly unsupported and preserved (above-knee CPI, LOD,
+stage-count write, `04`-generic/`08`/`09`/macro bindings), never
+fabricated or constructed. Verification: `check.sh` all green (109
+Python + 28 Node tests, manifest validation, QML lint), live-shell
+load + IPC open/close with screenshot review, isolated-quickshell
+branch coverage (null + full mock draft, zero QML errors),
+standalone icon render, read-only hardware probes (user-space
+permission and asleep paths surface honestly). A full live
+edit→apply pass on awake hardware needs the milestone-4 permission
+setup plus an operator mouse-wake; the widget→CLI path uses the
+identical commands proven in milestones 1–2. The hand-copied test
+install was disabled and removed after verification (proper
+install/remove scripts are milestone 4).
+
+**Inherited limits (still owned by milestones 1–2, F-007):** K4
+(DPI lock / profile switch / three-click / sleep actions), K5
+(disable / sleep / three-click / double-click), C1 above-knee CPI,
+C3 stage-count write, C7 LOD. When backend operations land, they
+plug into the existing draft/apply path with no UI rework.
+
+**Material decisions (milestone 3):**
+- Apply stdin is single-line framed (backend `_read_stdin_json`
+  reads one line; Quickshell 0.3 `Process` has `write()` but no
+  stdin-close, so EOF framing would deadlock). Backward compatible
+  with CLI pipes; covered by a trailing-line CLI test.
+- Refresh: status every 30 s + on hover/open + every 2 s while open;
+  full config read on open/hover (hover throttled to 10 s)/after
+  writes. The 2 s timer never touches EEPROM; no `listen` streaming
+  in the UI (it would hold the device lock continuously).
+- Drafts survive panel close; a dirty close asks Keep/Discard, and
+  profile-apply/reset/restore with a dirty draft ask first — no
+  silent loss. Stale revisions re-read and ask for review, never
+  auto-retry a write.
+- One Controller per bar-widget instance (recorded architecture, no
+  shared service): the device flock plus stale-revision checks
+  cover multi-monitor races; drafts are per-monitor by design.
+- `check.sh` QML lint now builds a `/tmp` mapping root (`qs/Ui`,
+  `qs/Commons` symlinks — symlinks are forbidden inside the plugin)
+  and adds the Quickshell import path; `-I /usr/share/omarchy/shell`
+  alone cannot resolve `qs.*` (proven against first-party files).
+- Remaining `qmllint` warnings match first-party categories exactly
+  (dynamic `Loader.item`/`bar.*`/`Style.*` access, delegate outer
+  scope, `QProcess::ExitStatus` signal signature — e.g. power Panel
+  ships 30+16+1 of the same); fixed locally were unused imports,
+  the Canvas scope and the HelperProc directory injection.
+- Quickshell serves stale QML bytecode across file-watch reloads
+  AND `rescanPlugins` + `Qt.clearComponentCache` (proven by a
+  line-shift test: the error stayed at the old line), so live
+  iteration needs a shell restart. Never restart the user's shell
+  to verify; isolated quickshell instances plus a final review
+  suffice.
+- Mutations stay disabled until enrollment; the enroll dialog
+  states the operator check explicitly. Only slot 4 = Back is
+  asserted (shared footnote); slots 13–16 are preserved, never
+  edited.
 
 ### 4. Package and release verification — not started
 
@@ -273,7 +346,7 @@ omarchy plugin disable hoppcx.op1we
 bash scripts/uninstall-dev.sh
 ```
 
-`check.sh` runs the two test commands, `python3 -m compileall -q backend`, `bash -n` on scripts, `/usr/lib/qt6/bin/qmllint -I /usr/share/omarchy/shell qml/*.qml`, and `omarchy plugin validate .`; verify/adjust QML import-root handling against the installed shell in milestone 3. `package.sh` derives the archive version from the manifest (initial release 1.0.0), stages only runtime files/docs/license/rule, rejects symlinks, validates the stage and emits archive/checksum. Dev install uses copies (validator forbids symlinks), refuses collisions with a non-dev installation, and updates only its owned files. Marketplace installation uses `omarchy plugin add` with the eventual public repository URL; record that literal URL and final command during release rather than inventing a remote now.
+`check.sh` runs the two test commands, `python3 -m compileall -q backend`, `bash -n` on scripts, QML lint, and `omarchy plugin validate .`. The lint step (adjusted against the installed shell in milestone 3) builds a `/tmp` mapping root exposing the shell's `Ui`/`Commons` dirs as `qs/Ui`/`qs/Commons` and runs `/usr/lib/qt6/bin/qmllint -I <mapping> -I /usr/lib/qt6/qml qml/*.qml`: `-I /usr/share/omarchy/shell` alone cannot resolve `qs.*`, and the Quickshell path is needed for `Quickshell.Io` types. `package.sh` derives the archive version from the manifest (initial release 1.0.0), stages only runtime files/docs/license/rule, rejects symlinks, validates the stage and emits archive/checksum. Dev install uses copies (validator forbids symlinks), refuses collisions with a non-dev installation, and updates only its owned files. Marketplace installation uses `omarchy plugin add` with the eventual public repository URL; record that literal URL and final command during release rather than inventing a remote now.
 
 ## Material risks and assumptions
 

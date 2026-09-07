@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "hoppcx.op1we",
+  "name": "OP1we Control",
+  "version": "0.3.0",
+  "author": "hoppcx",
+  "description": "Endgame Gear OP1we mouse battery indicator and settings: DPI stages, polling, buttons and device options.",
+  "license": "MIT",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "qml/BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "OP1we Control",
+    "description": "OP1we mouse battery indicator and settings",
+    "category": "Hardware",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "showPercent": true
+    },
+    "schema": [
+      {
+        "key": "showPercent",
+        "type": "boolean",
+        "label": "Show battery percent next to the mouse icon",
+        "description": "Hide for an icon-only slot.",
+        "defaultValue": true
+      }
+    ]
+  }
+}

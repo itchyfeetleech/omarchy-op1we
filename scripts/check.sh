@@ -41,9 +41,17 @@ fi
 
 if ls qml/*.qml >/dev/null 2>&1; then
   step "QML lint"
-  if ! /usr/lib/qt6/bin/qmllint -I /usr/share/omarchy/shell qml/*.qml; then
+  # qs.Ui/qs.Commons live directly under the shell dir, so qmllint needs a
+  # mapping root with the qs/ prefix (verified against installed shell in
+  # milestone 3). Built in /tmp: symlinks are forbidden inside the plugin.
+  lint_root=$(mktemp -d)
+  mkdir -p "$lint_root/qs"
+  ln -s /usr/share/omarchy/shell/Ui "$lint_root/qs/Ui"
+  ln -s /usr/share/omarchy/shell/Commons "$lint_root/qs/Commons"
+  if ! /usr/lib/qt6/bin/qmllint -I "$lint_root" -I /usr/lib/qt6/qml qml/*.qml; then
     fail=1
   fi
+  rm -rf "$lint_root"
 else
   echo "(skip) no qml/ yet (milestone 3)"
 fi

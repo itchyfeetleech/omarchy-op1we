@@ -106,11 +106,29 @@ class CliTest(unittest.TestCase):
         self.assertEqual(doc["data"]["snapshot"]["debounceMs"], 7)
         self.assertEqual(doc["data"]["snapshot"]["pollingHz"], 250)
 
+    def test_apply_reads_one_line_without_eof(self):
+        # Milestone 3: QML writes one JSON line over a pipe it cannot
+        # close, so apply must not wait for EOF. A trailing line proves
+        # line framing: slurp-until-EOF would fail the JSON parse.
+        self.run_cli(["enroll", "--confirm"])
+        code, doc = self.run_cli(["read"])
+        revision = doc["data"]["revision"]
+        req = {"apiVersion": 1, "expectedRevision": revision,
+               "changes": {"debounceMs": 9}}
+        stdin = json.dumps(req).encode() + b"\n" + b'{"trailing": "ignored"}\n'
+        code, doc = self.run_cli_stdin(["apply"], stdin)
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["data"]["applied"])
+        self.assertEqual(doc["data"]["snapshot"]["debounceMs"], 9)
+
     def test_apply_rejects_bad_stdin(self):
         self.run_cli(["enroll", "--confirm"])
         code, doc = self.run_cli_stdin(["apply"], b"not json")
         self.assertEqual(code, 2)
         code, doc = self.run_cli_stdin(["apply"], b"x" * (cli.STDIN_MAX_BYTES + 1))
+        self.assertEqual(code, 2)
+        code, doc = self.run_cli_stdin(
+            ["apply"], b"x" * cli.STDIN_MAX_BYTES + b"\n")
         self.assertEqual(code, 2)
         code, doc = self.run_cli_stdin(
             ["apply"], json.dumps({"apiVersion": 99, "changes": {}}).encode())

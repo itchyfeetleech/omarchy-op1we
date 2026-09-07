@@ -233,8 +233,13 @@ def cmd_restore(args) -> int:
 
 
 def _read_stdin_json(rid: str):
+    # Single-line framing (milestone 3): the QML layer writes one JSON
+    # line over a pipe it cannot close (Quickshell 0.3 Process exposes
+    # write() but no stdin-close), so waiting for EOF would deadlock the
+    # apply path. Anything after the first newline is ignored. CLI pipes
+    # (echo ... | op1we apply) behave exactly as before.
     try:
-        raw = sys.stdin.buffer.read(STDIN_MAX_BYTES + 1)
+        raw = sys.stdin.buffer.readline(STDIN_MAX_BYTES + 1)
     except OSError as exc:
         return None, ("invalid-input", f"cannot read stdin: {exc}", False)
     if len(raw) > STDIN_MAX_BYTES:
