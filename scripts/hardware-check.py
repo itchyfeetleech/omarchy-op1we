@@ -74,7 +74,7 @@ def main():
         kinds[binding.action.get("kind")] = kinds.get(binding.action.get("kind"), 0) + 1
     print(f"[INFO] binding kinds: {kinds}")
 
-    mem = ctl.read_memory(identity)
+    mem = ctl.read_full_backup(identity)
     backup_path = ctl.write_backup_file(identity, mem)
     ok &= check("backup written", os.path.exists(backup_path), backup_path)
 
@@ -110,7 +110,7 @@ def main():
         after = ctl.apply_bytes(identity, {protocol.ADDR_DEBOUNCE: change.encoded()},
                                 expected_revision=revision)
         ok &= check("write+readback", after.debounce_ms == target, f"debounce={after.debounce_ms}")
-        revision2 = protocol.config_revision(after.raw)
+        revision2 = after.revision
         restore = settings_mod.DebounceChange(value_ms=observed)
         final = ctl.apply_bytes(identity, {protocol.ADDR_DEBOUNCE: restore.encoded()},
                                 expected_revision=revision2)

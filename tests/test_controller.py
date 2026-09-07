@@ -103,12 +103,14 @@ class StatusTest(IsolatedState):
         self.assertEqual(status.charging, 0)
         self.assertEqual(status.profile, 1)
         self.assertTrue(status.link_up)
+        self.assertTrue(status.battery_fresh)
 
     def test_receiver_only_when_link_down(self):
         ctl = controller_mod.Controller(lambda ident: FakeTransport(ident, link=False))
         status = ctl.status(IDENTITY)
         self.assertEqual(status.connection, "receiver-only")
         self.assertEqual(status.percent, 70)  # cached battery still reported
+        self.assertFalse(status.battery_fresh)  # ...but flagged stale
 
     def test_unavailable_when_dead(self):
         ctl = controller_mod.Controller(
@@ -202,6 +204,208 @@ class LockTest(IsolatedState):
                 with device_mod.DeviceLock(IDENTITY):
                     pass
             self.assertEqual(ctx.exception.code, "busy")
+
+
+class CountingProxy:
+    """Transport factory wrapper counting lock sessions (F-003)."""
+
+    def __init__(self, inner, counter):
+        self.inner = inner
+        self.counter = counter
+
+    def __call__(self, identity):
+        self.counter[0] += 1
+        return self.inner
+
+
+class AtomicReadTest(IsolatedState):
+    def test_snapshot_reads_under_one_session(self):
+        fake = FakeTransport(IDENTITY)
+        counter = [0]
+        ctl = controller_mod.Controller(CountingProxy(fake, counter))
+        ctl.snapshot(IDENTITY)
+        self.assertEqual(counter[0], 1)
+
+    def test_backup_reads_payloads_under_one_session(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        ctl.apply(IDENTITY, {"keys": [{"slot": 11, "action": {"kind": "key", "keys": [0x04]}}]},
+                    expected_revision=ctl.snapshot(IDENTITY).revision)
+        counter = [0]
+        ctl2 = controller_mod.Controller(CountingProxy(fake, counter))
+        mem = ctl2.read_full_backup(IDENTITY)
+        self.assertEqual(counter[0], 1)
+        base = protocol.type5_addr(11)
+        self.assertEqual(mem[base], 2)  # payload event count present
+
+
+class RecoveryBackupTest(IsolatedState):
+    def test_auto_backup_captures_active_payloads(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        ctl.apply(IDENTITY, {"keys": [{"slot": 4, "action": {"kind": "key", "keys": [0x06]}}]},
+                    expected_revision=ctl.snapshot(IDENTITY).revision)
+        ctl.apply(IDENTITY, {"debounceMs": 5},
+                    expected_revision=ctl.snapshot(IDENTITY).revision)
+        state = os.environ["OP1WE_STATE_DIR"]
+        backups = [os.path.join(state, n) for n in os.listdir(state)
+                   if n.startswith("backup-")]
+        self.assertTrue(backups)
+        latest = max(backups, key=controller_mod.Controller._backup_seq)
+        with open(latest) as handle:
+            payload = json.load(handle)
+        base = protocol.type5_addr(4)
+        slot = bytes(payload["bytes"][f"{base + k:04x}"] for k in range(32))
+        self.assertEqual(protocol.parse_type5_payload(slot)["keys"], [0x06])
+
+    def test_recovery_backup_restores_bindings(self):
+        fake = FakeTransport(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        ctl.apply(IDENTITY, {"keys": [{"slot": 4, "action": {"kind": "key", "keys": [0x06]}}]},
+                    expected_revision=ctl.snapshot(IDENTITY).revision)
+        backup = ctl.read_full_backup(IDENTITY)
+        ctl.apply(IDENTITY, {"keys": [{"slot": 4, "action": {"kind": "key", "keys": [0x07]}}]},
+                    expected_revision=ctl.snapshot(IDENTITY).revision)
+        snap, chunks, changed = ctl.restore_mem(IDENTITY, backup)
+        self.assertTrue(changed)
+        base = protocol.type5_addr(4)
+        slot = bytes(fake.mem.get(base + k, 0xFF) for k in range(32))
+        self.assertEqual(protocol.parse_type5_payload(slot)["keys"], [0x06])
+
+
+class PruneBurstTest(IsolatedState):
+    def test_same_second_burst_keeps_newest(self):
+        from unittest import mock
+        ctl = controller_mod.Controller(lambda ident: FakeTransport(ident))
+        with mock.patch("time.strftime", return_value="20260907T120000"):
+            paths = [ctl.write_backup_file(IDENTITY, {0: i}) for i in range(12)]
+        for path in paths[-10:]:
+            self.assertTrue(os.path.exists(path), path)
+        state = os.environ["OP1WE_STATE_DIR"]
+        kept = [n for n in os.listdir(state) if n.startswith("backup-")]
+        self.assertEqual(len(kept), 10)
+        contents = []
+        for name in kept:
+            with open(os.path.join(state, name)) as handle:
+                contents.append(json.load(handle)["bytes"]["0000"])
+        self.assertEqual(sorted(contents), list(range(2, 12)))
+
+
+class MalformedReplyTest(IsolatedState):
+    def test_malformed_battery_degrades_to_unknown(self):
+        ctl = controller_mod.Controller(
+            lambda ident: FakeTransport(ident, battery=(101, 0)))
+        status = ctl.status(IDENTITY)
+        self.assertIsNone(status.percent)
+        self.assertFalse(status.battery_fresh)
+        self.assertEqual(status.connection, "connected")  # link still up
+
+    def test_malformed_link_degrades_to_unknown(self):
+        class BadLink(FakeTransport):
+            def exchange(self, opcode, payload=b"", timeout=2.0):
+                if opcode == protocol.OP_LINK:
+                    return reply(opcode, bytes([7]))
+                return super().exchange(opcode, payload, timeout)
+
+        ctl = controller_mod.Controller(lambda ident: BadLink(ident))
+        status = ctl.status(IDENTITY)
+        self.assertIsNone(status.link_up)
+        self.assertEqual(status.connection, "receiver-only")
+        self.assertFalse(status.battery_fresh)
+
+    def test_missing_charging_byte_is_unknown(self):
+        ctl = controller_mod.Controller(
+            lambda ident: FakeTransport(ident, battery=(70,)))
+        status = ctl.status(IDENTITY)
+        self.assertEqual(status.percent, 70)
+        self.assertIsNone(status.charging)
+        self.assertTrue(status.battery_fresh)
+
+    def test_corrupt_verify_echo_is_verify_failed(self):
+        class BadEcho(FakeTransport):
+            def exchange(self, opcode, payload=b"", timeout=2.0):
+                out = super().exchange(opcode, payload, timeout)
+                if (opcode == protocol.OP_EEPROM_READ and len(payload) >= 4
+                        and payload[3] == 2
+                        and (payload[1] << 8 | payload[2]) == protocol.ADDR_DEBOUNCE):
+                    mut = bytearray(out)
+                    mut[4] ^= 0xFF
+                    mut[16] = (0x55 - sum(mut[:16])) & 0xFF
+                    return bytes(mut)
+                return out
+
+        fake = BadEcho(IDENTITY)
+        ctl = controller_mod.Controller(lambda ident: fake)
+        with self.assertRaises(device_mod.Op1weError) as ctx:
+            ctl.apply_bytes(IDENTITY, {protocol.ADDR_DEBOUNCE: bytes([2, 0x53])},
+                            timeout=0.5)
+        self.assertEqual(ctx.exception.code, "verify-failed")
+        self.assertTrue(os.path.exists(ctx.exception.detail["backup"]))
+
+    def test_state_dir_failure_is_envelope_error(self):
+        blocker = os.path.join(self.tmp.name, "afile")
+        with open(blocker, "w") as handle:
+            handle.write("x")
+        os.environ["OP1WE_STATE_DIR"] = blocker
+        ctl = controller_mod.Controller(lambda ident: FakeTransport(ident))
+        with self.assertRaises(device_mod.Op1weError) as ctx:
+            ctl.write_backup_file(IDENTITY, {0: 1})
+        self.assertEqual(ctx.exception.code, "unavailable")
+
+
+class BudgetTest(IsolatedState):
+    def test_read_budget_binds_whole_operation(self):
+        import time as time_mod
+
+        class SlowFake(FakeTransport):
+            def exchange(self, opcode, payload=b"", timeout=2.0):
+                if opcode == protocol.OP_EEPROM_READ:
+                    time_mod.sleep(0.15)
+                return super().exchange(opcode, payload, timeout)
+
+        ctl = controller_mod.Controller(lambda ident: SlowFake(ident))
+        start = time_mod.monotonic()
+        with self.assertRaises(device_mod.Op1weError) as ctx:
+            ctl.read_memory(IDENTITY, timeout=1.0)
+        elapsed = time_mod.monotonic() - start
+        # 19 chunks x 0.15 s = 2.85 s unbudgeted; per-chunk renewal
+        # would have succeeded slowly instead of failing fast.
+        self.assertEqual(ctx.exception.code, "asleep")
+        self.assertLess(elapsed, 2.0)
+
+    def test_sufficient_budget_reads_fully(self):
+        import time as time_mod
+
+        class SlowFake(FakeTransport):
+            def exchange(self, opcode, payload=b"", timeout=2.0):
+                if opcode == protocol.OP_EEPROM_READ:
+                    time_mod.sleep(0.15)
+                return super().exchange(opcode, payload, timeout)
+
+        ctl = controller_mod.Controller(lambda ident: SlowFake(ident))
+        mem = ctl.read_memory(IDENTITY, timeout=5.0)
+        self.assertEqual(len(mem), 0xB5)
+
+
+class EnrollmentTest(IsolatedState):
+    def moved_identity(self):
+        return device_mod.DeviceIdentity(
+            vid=0x3367, pid=0x1961, bcd_device="0101",
+            manufacturer="Endgame Gear", product="x",
+            usb_path="1-8:1.1", descriptor_sha256="ab" * 32,
+            hidraw="/dev/hidraw3",
+        )
+
+    def test_usb_path_continuity(self):
+        controller_mod.save_enrollment(IDENTITY)
+        self.assertTrue(controller_mod.is_enrolled(IDENTITY))
+        moved = self.moved_identity()
+        self.assertFalse(controller_mod.is_enrolled(moved))
+        with self.assertRaises(device_mod.Op1weError) as ctx:
+            controller_mod.require_enrolled(moved)
+        self.assertEqual(ctx.exception.code, "device-changed")
+        controller_mod.save_enrollment(moved)  # re-confirm after checking
+        self.assertTrue(controller_mod.is_enrolled(moved))
 
 
 if __name__ == "__main__":

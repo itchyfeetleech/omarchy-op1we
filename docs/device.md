@@ -100,8 +100,10 @@ closed with distinct errors. Because OP1we-vs-XM2we cannot yet be
 proven on the wire, first use requires explicit local pairing
 enrollment: the operator confirms the paired mouse is the OP1we, and
 the helper records the enrollment (USB path, descriptor hash,
-firmware `bcdDevice`) for later mismatch warnings. Lifting the
-enrollment requirement needs the CID/MID command (milestone 2).
+firmware `bcdDevice`) and enforces fingerprint-plus-USB-path
+continuity on later writes (review F-006). Same-port replacement
+stays undetectable; lifting the enrollment requirement needs the
+CID/MID command (open follow-up).
 
 ## Firmware evidence
 

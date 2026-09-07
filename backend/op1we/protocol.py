@@ -171,13 +171,17 @@ def parse_reply(reply: bytes, expected_opcode: int) -> bytes:
     return bytes(reply[6:6 + length])
 
 
-def parse_battery(reply: bytes) -> tuple[int, int]:
-    """Return (percent, charging) from an opcode 0x04 reply."""
+def parse_battery(reply: bytes) -> tuple[int, int | None]:
+    """Return (percent, charging) from an opcode 0x04 reply.
+
+    A missing charging byte means unknown (None), never "not
+    charging" (F-011).
+    """
     data = parse_reply(reply, OP_BATTERY)
     if len(data) < 1 or data[0] > 100:
         raise ValueError(f"invalid battery payload: {data.hex()}")
-    charging = data[1] if len(data) > 1 else 0
-    if charging not in (0, 1):
+    charging = data[1] if len(data) > 1 else None
+    if charging is not None and charging not in (0, 1):
         raise ValueError(f"invalid charging flag: {charging}")
     return (data[0], charging)
 
@@ -383,11 +387,18 @@ def encode_key_record(kind: str, **fields) -> bytes:
 
 
 def config_revision(mem: dict[int, int]) -> str:
-    """Stable revision id: sha256 over the raw config bytes (stdlib hashlib)."""
+    """Stable revision id: sha256 over addressed (addr, value) bytes.
+
+    Callers pass the canonical map (config plus active type-5
+    payloads); addressing the hash keeps sparse and full maps
+    distinct so revisions agree across read/backup/apply (F-003).
+    """
     import hashlib
 
-    ordered = bytes(mem[a] for a in sorted(mem))
-    return hashlib.sha256(ordered).hexdigest()[:32]
+    digest = hashlib.sha256()
+    for addr in sorted(mem):
+        digest.update(bytes([(addr >> 8) & 0xFF, addr & 0xFF, mem[addr]]))
+    return digest.hexdigest()[:32]
 
 
 def encode_pair(value: int) -> bytes:

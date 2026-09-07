@@ -1,10 +1,13 @@
 # OP1we Control — implementation plan
 
-Planning date: 2026-09-07. Milestone 1: **complete 2026-09-07**.
-Milestone 2: **complete 2026-09-07** (full backend: stdin `apply`,
-`reset`, `listen`, host-side `profile`; 67 hardware-free tests
-green; live acceptance via delivered CLI). Milestones 3–4: **not
-started**. Pinned versions and evidence index: `docs/device.md`.
+Planning date: 2026-09-07. Milestones 1–2: **blocked (review
+F-007, recorded 2026-09-07)** — the delivered backend work stands
+(108 hardware-free tests green after the review fixes; live
+acceptance via delivered CLI), but both completion verdicts were
+overstated: required parity rows still lack proven encodings or
+backend operations (blockers itemized in the milestone sections).
+Milestones 3–4: **not started**. Pinned versions and evidence
+index: `docs/device.md`.
 
 ## Scope and evidence
 
@@ -87,13 +90,13 @@ PROJECT.md / PLAN.md / REVIEW.md
 
 ## Milestones (dependency order)
 
-### 1. Prove OP1we support and freeze parity — complete 2026-09-07
+### 1. Prove OP1we support and freeze parity — blocked (review F-007)
 
 Inventory the actual tool's tabs, controls, defaults, ranges, actions and storage behavior, including profiles/import/export/reset and sensor/power controls if present. Record every item as required, macro-excluded or demonstrably absent. Inspect read-only descriptors; obtain protocol evidence from upstream/vendor documentation and controlled captures where necessary. Establish exact identity, wired/receiver behavior, feature reports, battery/charging/link/current-DPI reads and all required configuration encodings. Add the minimal helper transport, fixtures, targeted permission rule and recovery backup support. Once safe, demonstrate a reversible setting write/readback and restoration on this OP1we.
 
 **Accept:** `docs/parity.md`, `docs/device.md` and `docs/protocol.md` contain evidence and no unresolved architectural questions; battery/link/config readings agree with hardware/reference; model selection excludes unrelated devices; all required control encodings have defensible evidence; reversible write survives reconnect and restores the original value. Unknown fields must not be guessed. If evidence/tool access is unavailable or identification cannot enforce scope, record the blocker and stop dependent work rather than building a speculative UI.
 
-**Result: met with scoped follow-ups.** Delivered: `docs/device.md`,
+**Result: blocked (review F-007).** Delivered: `docs/device.md`,
 `docs/parity.md` (27-row matrix), `docs/protocol.md`,
 `docs/hardware-results.md` (v0.1, 13 checks), minimal helper
 (`probe`/`enroll`/`status`/`read`/`backup`/`restore` JSON CLI),
@@ -106,6 +109,15 @@ reads, full `0x00–0xB4` decode matching Cfg defaults (polling
 1→2→1 with ACKs/readbacks, USB-reconnect persistence, restoration,
 and `0x0A` CPI-stage notifications from mode-button presses.
 Device left in its original state. No speculative UI was built.
+
+**Blockers (F-007):** accept required "all required control
+encodings have defensible evidence" — still missing: `04`-generic /
+`08` / `09` action meanings (K2/K4/K5), the LOD/`0xA0` dialog map
+(C7), the above-knee CPI value map (C1), the `0x02` stage-count
+write test (C3), type-5 physical-trigger observation (K3),
+CID/MID wire discrimination, wired-mode PIDs/behavior and
+charging=1 (C11). Each blocks only its own control; the proven
+architecture and delivered operations are unaffected.
 
 **Material decisions (milestone 1):**
 - Strict opcode allowlist `{0x03,0x04,0x07,0x08,0x0F}` enforced in
@@ -144,13 +156,13 @@ Device left in its original state. No speculative UI was built.
   (`ShowMacro=0`); lighting/RGB editing is absent for this device
   (pages hidden); Windows pointer settings are not device controls.
 
-### 2. Complete configuration backend — not started
+### 2. Complete configuration backend — blocked (review F-007)
 
 Implement all proven non-macro settings and actions, profiles according to their observed device/host storage semantics, reset, explicit backup/restore, conflict checks, bounded I/O, and verified writes. Implement JSON API and fake-transport test suite.
 
 **Accept:** every required parity row has a backend operation and fixture test; invalid/stale/unsupported requests perform zero writes; unknown bytes survive edits; failed/partial writes never report success; physical changes work, persist as the original tool does, and can be restored. Current DPI is measured/read, never guessed from the first stage.
 
-**Result: met with documented scope cuts.** Delivered: validated
+**Result: blocked (review F-007).** Delivered: validated
 stdin `apply` (polling, CPI ≤10000, debounce 0..30, sleep, ripple,
 fixline, turn-off-light, full key bindings incl. type-5 key/combo/
 media), `reset` (documented-defaults subset), `listen` (stage
@@ -164,6 +176,17 @@ returned the byte-identical revision; `read` reports measured
 without a safe operation fail closed with `unsupported` and zero
 writes (never constructed): LOD/`0xA0` block, `04`-generic,
 `08`/`09` specials, CPI above knee, `0x02` count (read-only).
+
+**Blockers (F-007):** accept required "every required parity row
+has a backend operation and fixture test" — failing closed is not
+an operation. Missing operations: K4 (DPI lock / profile switch /
+three-click / sleep actions), K5 (disable / sleep / three-click /
+double-click), C1 above-knee CPI, C3 stage-count write, C7 LOD;
+missing physical evidence: K3 type-5 trigger observation, C5
+report-timing cross-check, C11 charging=1, wired mode. Resolving
+any blocker needs hardware RE and operator sessions (see
+`docs/parity.md` follow-up backlog); milestone-3 full-parity UI
+work stays gated behind them.
 
 **Material decisions (milestone 2):**
 - Button meanings came from short behavior tests on the BACK rig

@@ -31,13 +31,20 @@ SYSFS_HIDRAW = "/sys/class/hidraw/hidraw*"
 
 
 class Op1weError(Exception):
-    """Stable, user-actionable failure with a machine-readable code."""
+    """Stable, user-actionable failure with a machine-readable code.
 
-    def __init__(self, code: str, message: str, retryable: bool = False):
+    `detail` carries optional verified post-failure context (recovery
+    backup path, observed bytes); the CLI surfaces it in the error
+    envelope without changing the stable code/message contract.
+    """
+
+    def __init__(self, code: str, message: str, retryable: bool = False,
+                 detail: dict | None = None):
         super().__init__(message)
         self.code = code
         self.message = message
         self.retryable = retryable
+        self.detail = detail
 
 
 def _ioc(direction: int, tor: str, nr: int, size: int) -> int:
@@ -207,9 +214,16 @@ class HidrawTransport:
     def __exit__(self, *exc_info: object) -> None:
         self.close()
 
+    # Stale-input hygiene per exchange: bounded so a chatty node
+    # cannot spin a drain forever (F-010). Overflowing reports are
+    # still filtered by opcode on the read path.
+    _DRAIN_CAP = 64
+
     def _drain(self) -> None:
         assert self._fd is not None
-        while select.select([self._fd], [], [], 0)[0]:
+        for _ in range(self._DRAIN_CAP):
+            if not select.select([self._fd], [], [], 0)[0]:
+                break
             try:
                 os.read(self._fd, 64)
             except OSError:
@@ -298,8 +312,13 @@ class DeviceLock:
         self._fd: int | None = None
 
     def __enter__(self) -> "DeviceLock":
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        self._fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
+            self._fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError as exc:
+            raise Op1weError(
+                "unavailable", f"cannot create lock dir: {exc}"
+            ) from exc
         try:
             fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:

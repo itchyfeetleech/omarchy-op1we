@@ -49,13 +49,22 @@ def _emit(doc: dict) -> None:
     sys.stdout.flush()
 
 
-def _fail(request_id: str, code: str, message: str, retryable: bool = False) -> int:
-    _emit(_envelope(request_id, False, None, {"code": code, "message": message, "retryable": retryable}))
+def _fail(request_id: str, code: str, message: str, retryable: bool = False,
+          detail: dict | None = None) -> int:
+    error: dict = {"code": code, "message": message, "retryable": retryable}
+    if detail is not None:
+        error["detail"] = detail
+    _emit(_envelope(request_id, False, None, error))
     if code in _BUSY_CODES:
         return EXIT_BUSY
     if code in _UNAVAILABLE_CODES or code == "invalid-input":
         return EXIT_INVALID if code == "invalid-input" else EXIT_UNAVAILABLE
     return EXIT_PROTOCOL
+
+
+def _fail_exc(request_id: str, exc: device_mod.Op1weError) -> int:
+    """Fail with an Op1weError, preserving post-failure detail (F-002)."""
+    return _fail(request_id, exc.code, exc.message, exc.retryable, exc.detail)
 
 
 def _request_id(args) -> str:
@@ -69,7 +78,7 @@ def cmd_probe(args) -> int:
     try:
         identity = device_mod.discover()
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     record = controller_mod.load_enrollment()
     _emit(
         _envelope(
@@ -97,9 +106,9 @@ def cmd_enroll(args) -> int:
         )
     try:
         identity = device_mod.discover()
+        record = controller_mod.save_enrollment(identity)
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
-    record = controller_mod.save_enrollment(identity)
+        return _fail_exc(rid, exc)
     _emit(_envelope(rid, True, {"enrollment": record}, None))
     return EXIT_OK
 
@@ -121,7 +130,7 @@ def cmd_status(args) -> int:
     try:
         status = ctl.status(identity)
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     _emit(
         _envelope(
             rid,
@@ -131,6 +140,10 @@ def cmd_status(args) -> int:
                 "enrolled": controller_mod.is_enrolled(identity),
                 "connection": status.connection,
                 "batteryPercent": status.percent,
+                # True only for a fresh mouse measurement; a present
+                # percent with batteryFresh=false is receiver cache of
+                # unknown age (F-011). observedAt is the response time.
+                "batteryFresh": status.battery_fresh,
                 "charging": status.charging,
                 "profile": status.profile,
                 "linkUp": status.link_up,
@@ -152,7 +165,7 @@ def cmd_read(args) -> int:
     try:
         snap = ctl.snapshot(identity)
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     _emit(_envelope(rid, True, snap.describe(), None))
     return EXIT_OK
 
@@ -168,7 +181,7 @@ def cmd_backup(args) -> int:
         mem = ctl.read_full_backup(identity)
         path = ctl.write_backup_file(identity, mem)
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     _emit(
         _envelope(
             rid,
@@ -186,7 +199,7 @@ def _restore_from_mem(rid: str, identity, ctl, mem, expected_revision):
             identity, mem, expected_revision=expected_revision
         )
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     _emit(
         _envelope(
             rid,
@@ -211,11 +224,11 @@ def cmd_restore(args) -> int:
             return _fail(
                 rid,
                 "invalid-input",
-                "backup was captured from a different receiver; refusing cross-device restore",
+                "backup fingerprint does not match this receiver; refusing restore",
             )
         mem = ctl.load_backup_file(args.file)
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     return _restore_from_mem(rid, identity, ctl, mem, args.expected_revision)
 
 
@@ -257,7 +270,7 @@ def cmd_apply(args) -> int:
         snap, chunks = ctl.apply(identity, changes,
                                  expected_revision=request.get("expectedRevision"))
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     _emit(_envelope(rid, True,
                     {"applied": chunks > 0, "chunks": chunks,
                      "snapshot": snap.describe()}, None))
@@ -276,14 +289,14 @@ def cmd_reset(args) -> int:
         current = ctl.read_memory(identity)
         writes = controller_mod.plan_reset(current)
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     if not writes:
         _emit(_envelope(rid, True, {"reset": False, "reason": "already at defaults"}, None))
         return EXIT_OK
     try:
         snap = ctl.apply_bytes(identity, writes, expected_revision=args.expected_revision)
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     _emit(_envelope(rid, True,
                     {"reset": True, "chunks": len(writes),
                      "snapshot": snap.describe()}, None))
@@ -307,7 +320,7 @@ def cmd_listen(args) -> int:
             with device_mod.HidrawTransport(identity) as transport:
                 events = transport.listen_stage(seconds)
     except device_mod.Op1weError as exc:
-        return _fail(rid, exc.code, exc.message, exc.retryable)
+        return _fail_exc(rid, exc)
     _emit(_envelope(rid, True, {"events": events}, None))
     return EXIT_OK
 
@@ -318,18 +331,25 @@ def cmd_profile(args) -> int:
     if action == "list":
         _emit(_envelope(rid, True, {"profiles": controller_mod.list_profiles()}, None))
         return EXIT_OK
+    # Validate action-specific arguments before any I/O (F-009).
+    if action in ("save", "show", "delete", "apply") and not args.name:
+        return _fail(rid, "invalid-input", f"profile {action} needs --name")
+    if action in ("export", "import") and not args.file:
+        return _fail(rid, "invalid-input", f"profile {action} needs --file")
     if action == "delete":
         try:
             controller_mod.delete_profile(args.name)
         except device_mod.Op1weError as exc:
-            return _fail(rid, exc.code, exc.message, exc.retryable)
+            return _fail_exc(rid, exc)
         _emit(_envelope(rid, True, {"deleted": args.name}, None))
         return EXIT_OK
     if action == "export":
+        if not args.name:
+            return _fail(rid, "invalid-input", "profile export needs --name")
         try:
             mem, payload = controller_mod.load_profile_bytes(args.name)
         except device_mod.Op1weError as exc:
-            return _fail(rid, exc.code, exc.message, exc.retryable)
+            return _fail_exc(rid, exc)
         try:
             with open(args.file, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=1)
@@ -354,7 +374,7 @@ def cmd_profile(args) -> int:
             tmp = {"kind": "op1we-profile", "bytes": raw}
             _validate_byte_map(tmp)
         except device_mod.Op1weError as exc:
-            return _fail(rid, exc.code, exc.message, exc.retryable)
+            return _fail_exc(rid, exc)
         name = args.name or payload.get("name") or "imported"
         try:
             controller_mod.validate_profile_name(name)
@@ -364,7 +384,7 @@ def cmd_profile(args) -> int:
                 payload["name"] = name
                 json.dump(payload, handle, indent=1)
         except device_mod.Op1weError as exc:
-            return _fail(rid, exc.code, exc.message, exc.retryable)
+            return _fail_exc(rid, exc)
         except OSError as exc:
             return _fail(rid, "invalid-input", f"cannot store profile: {exc}")
         _emit(_envelope(rid, True, {"imported": name}, None))
@@ -379,7 +399,7 @@ def cmd_profile(args) -> int:
             mem = ctl.read_full_backup(identity)
             info = controller_mod.save_profile(identity, args.name, mem)
         except device_mod.Op1weError as exc:
-            return _fail(rid, exc.code, exc.message, exc.retryable)
+            return _fail_exc(rid, exc)
         _emit(_envelope(rid, True, info, None))
         return EXIT_OK
     if action == "show":
@@ -388,7 +408,7 @@ def cmd_profile(args) -> int:
             snap = controller_mod.settings_mod.snapshot_from_memory(
                 payload.get("fingerprint", ""), mem, None)
         except device_mod.Op1weError as exc:
-            return _fail(rid, exc.code, exc.message, exc.retryable)
+            return _fail_exc(rid, exc)
         _emit(_envelope(rid, True, {"profile": payload.get("name"),
                                     "snapshot": snap.describe()}, None))
         return EXIT_OK
@@ -398,9 +418,9 @@ def cmd_profile(args) -> int:
             mem, payload = controller_mod.load_profile_bytes(args.name)
             if payload.get("fingerprint") != identity.fingerprint:
                 return _fail(rid, "invalid-input",
-                              "profile was captured from a different receiver")
+                              "profile fingerprint does not match this receiver")
         except device_mod.Op1weError as exc:
-            return _fail(rid, exc.code, exc.message, exc.retryable)
+            return _fail_exc(rid, exc)
         return _restore_from_mem(rid, identity, ctl, mem, args.expected_revision)
     return _fail(rid, "invalid-input", f"unknown profile action {action!r}")
 
@@ -484,6 +504,11 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_profile(args)
     except BrokenPipeError:
         return EXIT_PROTOCOL
+    except Exception as exc:  # last resort: one envelope, never a bare traceback (F-009)
+        import traceback
+
+        traceback.print_exc()
+        return _fail(_request_id(args), "internal", f"internal error: {exc!r}")
     return EXIT_INVALID
 
 

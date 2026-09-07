@@ -191,6 +191,16 @@ class EepromDecodeTest(unittest.TestCase):
         altered[0xA9] ^= 0x01
         self.assertNotEqual(protocol.config_revision(altered), rev)
 
+    def test_revision_is_addressed(self):
+        self.assertNotEqual(protocol.config_revision({0: 1, 1: 2}),
+                            protocol.config_revision({5: 1, 6: 2}))
+
+    def test_battery_missing_charging_is_unknown(self):
+        base = bytearray.fromhex("0904000000024600000000000000000000")
+        base[5] = 1
+        base[16] = protocol.checksum(bytes(base[:16]))
+        self.assertEqual(protocol.parse_battery(bytes(base)), (70, None))
+
 
 if __name__ == "__main__":
     unittest.main()
