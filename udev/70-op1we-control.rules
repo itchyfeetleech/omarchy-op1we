@@ -1,0 +1,15 @@
+# OP1we Control — narrowly scoped device access.
+#
+# Grants the active session (uaccess) hidraw access to the verified WE
+# series receiver only. Never broadened to all HID or world-write.
+# Install (explicit administrator step, milestone 4):
+#   sudo install -m 0644 udev/70-op1we-control.rules /etc/udev/rules.d/70-op1we-control.rules
+#   sudo udevadm control --reload-rules
+# then physically replug the receiver/cable.
+#
+# Wired PIDs 0x1960/0x1962 (per vendor Cfg.ini) are intentionally NOT
+# listed: neither was observed on OP1we hardware in milestone 1
+# (docs/device.md). Add the verified wired PID after a wired-mode
+# capture, e.g.:
+#   KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3367", ATTRS{idProduct}=="1962", TAG+="uaccess"
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3367", ATTRS{idProduct}=="1961", TAG+="uaccess"

@@ -1,6 +1,9 @@
 # OP1we Control — implementation plan
 
-Planning date: 2026-09-07. Application implementation: **not started**.
+Planning date: 2026-09-07. Milestone 1 implementation: **complete
+2026-09-07** (evidence in `docs/`, minimal helper in `backend/`,
+33 hardware-free tests green). Milestones 2–4: **not started**.
+Pinned versions and evidence index: `docs/device.md`.
 
 ## Scope and evidence
 
@@ -8,7 +11,7 @@ Build **OP1we Control**, plugin ID `hoppcx.op1we`: a native Omarchy mouse-status
 
 Repository inspection: only `PROJECT.md` and workflow templates; no code, dependencies, tests, assets, AGENTS.md or Git remote. `PLAN.md`, `README.md` and `REVIEW.md` were already untracked. Installed target is Omarchy **4.0.2-1**, using Quickshell, not Waybar. `lsusb` identifies receiver **3367:1961**, with two hidraw interfaces, no serial, and root-only device access. This identifies a WE receiver, not conclusively its paired mouse model. No HID commands or system changes were performed during planning.
 
-Sources checked (recheck and pin relevant versions in milestone 1):
+Sources checked (versions pinned in milestone 1, see `docs/device.md`):
 
 - [Vendor OP1we downloads](https://endgamegear.com/pages/op1we-downloads): Configuration Tool V1.0 is the parity baseline.
 - [Vendor specifications](https://www.endgamegear.com/en-nl/op1we/gaming-mice): DPI 50–19000 (50 increments through 10000, then 100); polling 125/250/500/1000 Hz; LoD 1/2 mm; configurable debounce. These are starting constraints, to verify against the actual tool and firmware.
@@ -83,11 +86,62 @@ PROJECT.md / PLAN.md / REVIEW.md
 
 ## Milestones (dependency order)
 
-### 1. Prove OP1we support and freeze parity — not started
+### 1. Prove OP1we support and freeze parity — complete 2026-09-07
 
 Inventory the actual tool's tabs, controls, defaults, ranges, actions and storage behavior, including profiles/import/export/reset and sensor/power controls if present. Record every item as required, macro-excluded or demonstrably absent. Inspect read-only descriptors; obtain protocol evidence from upstream/vendor documentation and controlled captures where necessary. Establish exact identity, wired/receiver behavior, feature reports, battery/charging/link/current-DPI reads and all required configuration encodings. Add the minimal helper transport, fixtures, targeted permission rule and recovery backup support. Once safe, demonstrate a reversible setting write/readback and restoration on this OP1we.
 
 **Accept:** `docs/parity.md`, `docs/device.md` and `docs/protocol.md` contain evidence and no unresolved architectural questions; battery/link/config readings agree with hardware/reference; model selection excludes unrelated devices; all required control encodings have defensible evidence; reversible write survives reconnect and restores the original value. Unknown fields must not be guessed. If evidence/tool access is unavailable or identification cannot enforce scope, record the blocker and stop dependent work rather than building a speculative UI.
+
+**Result: met with scoped follow-ups.** Delivered: `docs/device.md`,
+`docs/parity.md` (27-row matrix), `docs/protocol.md`,
+`docs/hardware-results.md` (v0.1, 13 checks), minimal helper
+(`probe`/`enroll`/`status`/`read`/`backup`/`restore` JSON CLI),
+fixtures from real captures, 33 `unittest` tests green,
+`scripts/check.sh`, `scripts/hardware-check.py`,
+`udev/70-op1we-control.rules` (syntax-verified, not installed),
+MIT `LICENSE`. Live proof on the OP1we: link/battery(70%)/profile
+reads, full `0x00–0xB4` decode matching Cfg defaults (polling
+1000 Hz, CPI 400/800/1600/3200, debounce 1 ms), debounce
+1→2→1 with ACKs/readbacks, USB-reconnect persistence, restoration,
+and `0x0A` CPI-stage notifications from mode-button presses.
+Device left in its original state. No speculative UI was built.
+
+**Material decisions (milestone 1):**
+- Strict opcode allowlist `{0x03,0x04,0x07,0x08,0x0F}` enforced in
+  `protocol.frame()`: a read-style sweep implicated `0x0E` in a
+  receiver reset to bootloader mode `25a7:fabc` (self-recovered,
+  config intact); `0x0D` cannot be excluded. Never send anything
+  unlisted (`docs/protocol.md`).
+- OP1we-vs-XM2we wire discrimination is unresolved (shared receiver
+  ID, no serial; CID/MID command not yet isolated), so writes
+  require explicit local pairing enrollment plus fail-closed
+  discovery (zero/multiple candidates error; fingerprint-mismatch
+  blocks restore). CID/MID isolation is milestone-2 RE.
+- Forward writes in milestone 1 are limited to a provenance gate
+  (device-observed or Cfg-documented values); there is no generic
+  `apply` CLI yet — `restore` (verified, chunk-diffed, revision-
+  checked) is the only CLI write path. Full apply/profile API is
+  milestone 2.
+- Button action types `0x02/0x04/0x07/0x08`, LOD, dormancy, stage
+  count, angle-snapping/motion-sync, profile count and the debounce
+  range are recorded **open** in `docs/parity.md` with a concrete
+  remediation path (targeted RE of identified binary functions or a
+  captured Windows session). They block only their own controls,
+  not the proven architecture.
+- Current CPI stage is tracked via unsolicited `0x0A`
+  notifications; no initial-stage getter was found (one-sample
+  header-pair hypothesis documented, unconfirmed). Seeding is a
+  milestone-3 decision.
+- "Firmware version" is the USB `bcdDevice` (`0101`) via
+  `HidD_GetAttributes` (proven in the binary); no firmware blob or
+  flash routine ships, so firmware update is out of scope.
+- Profiles are host-side `.dct` files plus one device profile
+  (`0x0F` returns 1); plugin reproduces them host-side.
+- udev rule covers verified `3367:1961` only; wired PIDs
+  `0x1960/0x1962` stay out until observed on OP1we hardware.
+- Macro page is excluded (PROJECT.md) and tool-hidden
+  (`ShowMacro=0`); lighting/RGB editing is absent for this device
+  (pages hidden); Windows pointer settings are not device controls.
 
 ### 2. Complete configuration backend — not started
 

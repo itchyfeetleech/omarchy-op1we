@@ -1,0 +1,10 @@
+# Provenance: captured 2026-09-07, OP1we 3367:1961. Reversible
+# debounce write at 0xA9: before 01 54, write 02 53 (ACK observed),
+# readback 02 53 (data observed), reconnect persistence, restore
+# 01 54 (ACK observed), final readback 01 54 (data observed).
+# tx frames follow the proven framing rule; readback rx frames use the
+# observed 0x08 reply shape with the observed data bytes.
+{"step": "write-02-53", "tx": "08070000a9020253000000000000000046", "rx": "09070000a9020253000000000000000045"}
+{"step": "readback-02-53", "tx": "08080000a902000000000000000000009a", "rx": "09080000a9020253000000000000000044"}
+{"step": "restore-01-54", "tx": "08070000a9020154000000000000000046", "rx": "09070000a9020154000000000000000045"}
+{"step": "final-readback-01-54", "tx": "08080000a902000000000000000000009a", "rx": "09080000a9020154000000000000000044"}
