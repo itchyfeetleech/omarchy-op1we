@@ -60,7 +60,7 @@ Item {
   }
 
   function _helperArgs(cmd) {
-    var args = ["python3", "-m", "op1we"].concat(cmd)
+    var args = ["python3", "-B", "-m", "op1we"].concat(cmd)
     return args.concat(["--request-id", _requestId()])
   }
 
@@ -110,7 +110,7 @@ Item {
   // ---- draft ------------------------------------------------------------
 
   function touchDraft() {
-    draftChanged()
+    draft = Model.clone(draft)
   }
 
   function cancelDraft() {

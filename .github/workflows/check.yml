@@ -1,0 +1,25 @@
+name: Check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: PYTHONPATH=backend python3 -m unittest discover -s tests -v
+      - run: node --test tests/model.test.cjs
+      - run: python3 -m compileall -q backend scripts
+      - run: for file in scripts/*.sh; do bash -n "$file"; done
+      - run: bash scripts/package.sh --portable
+      - run: cd dist && sha256sum -c *.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: op1we-control-preview
+          path: dist/

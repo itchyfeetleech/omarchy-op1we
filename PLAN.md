@@ -8,7 +8,7 @@ overstated: required parity rows still lack proven encodings or
 backend operations (blockers itemized in the milestone sections).
 Milestone 3: **delivered 2026-09-07 (UI complete; full
 effectiveness limited by inherited F-007 backend gaps — see the
-milestone section)**. Milestone 4: **not started**. Pinned versions
+milestone section)**. Milestone 4: **implementation delivered 2026-09-07; physical acceptance and publication remain blocked**. Pinned versions
 and evidence index: `docs/device.md`.
 
 ## Scope and evidence
@@ -292,11 +292,56 @@ plug into the existing draft/apply path with no UI rework.
   asserted (shared footnote); slots 13–16 are preserved, never
   edited.
 
-### 4. Package and release verification — not started
+### 4. Package and release verification — implementation delivered; acceptance blocked
 
 Provide safe dev install/removal, source archive, dependency checks, CI, MIT license/attribution, concise user README, complete hardware checklist and a real themed screenshot. Validate current marketplace requirements, then prepare GitHub release and marketplace submission content. Publication/submission occurs only in a later authorized release task, not this planning task.
 
 **Accept:** clean Omarchy 4 installation using documented commands works without development tooling at runtime; removal leaves unrelated shell configuration and user data intact; missing permissions/dependencies explain the remedy; archive validates and matches its checksum; tests pass; every parity row has physical acceptance evidence. Completion additionally requires the public GitHub URL and marketplace submission URL recorded here; acceptance into the marketplace is externally controlled.
+
+## 0.4.0 redesign and milestone-4 delivery (2026-09-07)
+
+Replaced the long form with Buttons / Sensitivity / Profiles & device tabs.
+The default view uses an original themed OP1we vector outline with five
+annotated action dropdowns; custom bindings are edited one slot at a time.
+DPI stages sit side by side (two columns at narrow widths). Apply/Cancel
+remain outside the scrolling area. Existing drafts, confirmations, recovery
+and unsupported-value preservation remain in the controller path. Draft
+notifications now propagate a new object to nested controls; helper calls use
+`python3 -B` to avoid creating caches in the installed plugin.
+
+Milestone-4 implementation delivered: ownership-aware install/update/remove
+scripts, dependency/native validation, allowlisted tarball + SHA256,
+GitHub Actions portable checks/artifact upload, concise README, native themed
+preview and release/submission draft with physical checklist (`docs/release.md`).
+Version is 0.4.0 development preview, not 1.0/full parity. Scripts reject
+symlinks, unmanaged collisions and modified files; recognized Python caches
+of owned modules may be removed during update. Removal preserves user state
+and unrelated files. No administrator action or mouse write was performed.
+
+Verification: 113 Python tests + 28 Node tests passed; shell/Python/udev
+checks, native manifest validation and QML lint passed. Remaining lint
+categories are the previously documented dynamic Style/bar/outer delegate
+scope and Quickshell signal metadata, not blanket-suppressed. Isolated native
+Quickshell rendered Buttons, Sensitivity and Profiles pages without QML
+runtime errors; Buttons also visually checked at 200% via QT_SCALE_FACTOR=2.
+The fixture-backed native capture is docs/preview.png, explicitly labelled
+as illustrative data. Extracted archive installed, updated and removed under
+an isolated XDG_CONFIG_HOME with native validation; unrelated sentinel file
+survived. Checksum and archive allowlist/type audit passed.
+
+The managed development copy is installed and enabled in the user's bar.
+The existing shell retained stale QML across rescans. The user explicitly
+approved one shell restart; `omarchy restart shell` and `shell summon`
+activated the redesigned panel successfully, with no plugin QML errors.
+Native permission-denied state was visually checked; the receiver udev rule
+is not installed, so hardware read/write acceptance remains pending.
+
+Acceptance is still blocked by the existing F-006/F-007 hardware work and
+physical checklist. No Git remote exists. Public repository and marketplace
+submission URLs remain pending; the publishing requirements were rechecked
+at https://plugins.omarchy.org/publish.html and submission content prepared.
+Nothing has been published or submitted. CI is authored but has not yet run
+on GitHub. These external/physical gates are not marked complete.
 
 ## Testing strategy
 
@@ -324,6 +369,7 @@ PYTHONPATH=backend python3 -m op1we read
 
 # Copy development plugin, validate, load, enable and open
 bash scripts/install-dev.sh
+omarchy-shell shell rescanPlugins
 omarchy plugin validate "$HOME/.config/omarchy/plugins/hoppcx.op1we"
 omarchy-shell shell rescanPlugins
 omarchy plugin enable hoppcx.op1we --section right
@@ -339,7 +385,7 @@ PYTHONPATH=backend python3 scripts/hardware-check.py --interactive
 
 # Package working-tree runtime files, excluding tests, caches and private captures
 bash scripts/package.sh
-sha256sum -c dist/op1we-control-1.0.0.tar.gz.sha256
+(cd dist && sha256sum -c op1we-control-0.4.0.tar.gz.sha256)
 
 # Remove development install (preserves backups/profiles)
 omarchy plugin disable hoppcx.op1we
@@ -366,8 +412,8 @@ bash scripts/uninstall-dev.sh
 | Check | Evidence required | Result |
 |---|---|---|
 | Protocol and non-macro parity | Completed parity matrix + hardware results on recorded firmware | Pending |
-| Automated tests/checks | Commands above, CI and native QML loading | Pending |
+| Automated tests/checks | Commands above, CI and native QML loading | Local checks passed; remote CI pending |
 | Fresh install/removal | Clean Omarchy user; narrowly scoped permissions; unrelated config preserved | Pending |
 | Main workflow and appearance | Real mouse, theme switch, scaling, reconnect, screenshots | Pending |
-| Package | Valid staged manifest, archive checksum, install from archive | Pending |
+| Package | Valid staged manifest, archive checksum, install from archive | Passed for 0.4.0 preview |
 | Publication | Public GitHub release URL and marketplace submission URL | Pending |

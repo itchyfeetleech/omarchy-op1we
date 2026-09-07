@@ -23,7 +23,7 @@ Panel {
 
   readonly property color ink: bar ? bar.barForeground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
-  readonly property color dim: Qt.darker(ink, 1.55)
+  readonly property color dim: Qt.alpha(ink, 0.65)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   function open() {
@@ -83,6 +83,9 @@ Panel {
 
   // ---- local UI state ------------------------------------------------------
 
+  property int currentTab: 0
+  property int selectedSlot: 4
+  property bool showBindingDetails: false
   property string selectedProfile: ""
   property string pendingAction: ""
   property string pendingArg: ""
@@ -270,12 +273,13 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: flick
-    contentWidth: panel.fittedContentWidth(Style.space(470))
-    contentHeight: panel.fittedContentHeight(form.implicitHeight)
+    contentWidth: panel.fittedContentWidth(Style.space(760))
+    contentHeight: panel.fittedContentHeight(Math.min(form.implicitHeight, Style.space(720)) + footer.implicitHeight + Style.space(18))
 
     Flickable {
       id: flick
       anchors.fill: parent
+      anchors.bottomMargin: footer.implicitHeight + Style.space(18)
       contentWidth: width
       contentHeight: form.implicitHeight
       clip: true
@@ -496,10 +500,42 @@ Panel {
           }
         }
 
-        PanelSeparator { foreground: root.ink }
+
+
+        Row {
+          width: parent.width
+          spacing: Style.space(8)
+          Repeater {
+            model: ["Buttons", "Sensitivity", "Profiles & device"]
+            delegate: Button {
+              required property int index
+              required property string modelData
+              width: (form.width - Style.space(16)) / 3
+              text: modelData
+              selected: root.currentTab === index
+              bordered: true
+              focusable: true
+              foreground: root.ink
+              fontFamily: root.fontFamily
+              onClicked: { root.currentTab = index; flick.contentY = 0 }
+            }
+          }
+        }
+
+        MouseMap {
+          visible: root.currentTab === 0
+          width: parent.width
+          ink: root.ink
+          fontFamily: root.fontFamily
+          draft: root.op1we ? root.op1we.draft : null
+          onReverted: function(slot) { root.pickKind(slot, "keep") }
+          onAssigned: function(slot, action) { root.setDraftKey(slot, action) }
+          onCustomize: function(slot) { root.selectedSlot = slot; root.showBindingDetails = true }
+        }
 
         // ---- DPI stages ------------------------------------------------------
         Column {
+          visible: root.currentTab === 1
           width: parent.width
           spacing: Style.space(10)
 
@@ -509,11 +545,15 @@ Panel {
             fontFamily: root.fontFamily
           }
 
+          Grid {
+            width: parent.width
+            columns: width < Style.space(520) ? 2 : 4
+            spacing: Style.space(12)
           Repeater {
             model: 4
-            delegate: Row {
+            delegate: Column {
               required property int index
-              width: form.width
+              width: (form.width - Style.space(12) * (parent.columns - 1)) / parent.columns
               spacing: Style.space(10)
 
               property bool encodable: root.op1we && root.op1we.draft
@@ -523,7 +563,7 @@ Panel {
                 ? root.op1we.snapshot.currentStage === index : false
 
               Text {
-                anchors.verticalCenter: parent.verticalCenter
+
                 textFormat: Text.PlainText
                 text: "Stage " + (index + 1) + (active ? " \u25CF" : "")
                 color: active ? root.ink : root.dim
@@ -535,7 +575,7 @@ Panel {
               }
 
               NumberField {
-                anchors.verticalCenter: parent.verticalCenter
+
                 enabled: encodable && root.op1we && root.op1we.draft
                 value: root.op1we && root.op1we.draft && root.op1we.draft.cpi
                   && root.op1we.draft.cpi[index] != null ? root.op1we.draft.cpi[index] : 50
@@ -554,34 +594,37 @@ Panel {
 
               Text {
                 visible: !encodable
-                anchors.verticalCenter: parent.verticalCenter
+
                 textFormat: Text.PlainText
-                text: "Above-knee value (preserved, not editable)"
+                text: "Higher DPI preserved"
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
-                width: Math.max(0, parent.width - Style.space(78) - Style.space(120) - parent.spacing * 2)
+                width: parent.width
                 elide: Text.ElideRight
                 wrapMode: Text.WordWrap
               }
             }
           }
 
+          }
+
           Text {
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             width: parent.width
-            text: "50\u201310000 in steps of 50. Values above 10000 stay on the mouse untouched: their encoding is unproven."
+            text: "50–10000 DPI · 50 DPI increments. Higher existing values are preserved."
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
           }
         }
 
-        PanelSeparator { foreground: root.ink }
+
 
         // ---- sensor ------------------------------------------------------------
         Column {
+          visible: root.currentTab === 1
           width: parent.width
           spacing: Style.space(10)
 
@@ -747,7 +790,7 @@ Panel {
             text: {
               var count = root.op1we && root.op1we.snapshot ? root.op1we.snapshot.stageCount : null
               return "CPI stage count: " + (count === null || count === undefined ? "--" : count)
-                + " (read-only; the write test is still open)."
+                + " · Read only"
             }
             color: root.dim
             font.family: root.fontFamily
@@ -758,34 +801,54 @@ Panel {
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             width: parent.width
-            text: "Lift-off distance: unsupported \u2014 the dialog encoding is unknown, so the mouse keeps its value."
+            text: "Lift-off distance is not available yet. Your current setting is preserved."
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
           }
         }
 
-        PanelSeparator { foreground: root.ink }
+
 
         // ---- buttons -------------------------------------------------------------
         Column {
+          visible: root.currentTab === 0
           width: parent.width
           spacing: Style.space(10)
 
           PanelSectionHeader {
-            text: "BUTTONS"
+            text: "CUSTOM BINDING"
             foreground: root.ink
             fontFamily: root.fontFamily
           }
 
+          Row {
+            spacing: Style.space(10)
+            Dropdown {
+              width: Style.space(220)
+              value: String(root.selectedSlot)
+              options: Array.from({length: 12}, function(_, i) {
+                return {value: String(i + 1), label: Model.slotLabel(i + 1)}
+              })
+              onChanged: function(v) { root.selectedSlot = parseInt(v); root.showBindingDetails = true }
+            }
+            Button {
+              text: root.showBindingDetails ? "Hide details" : "Edit binding"
+              focusable: true
+              bordered: true
+              foreground: root.ink
+              onClicked: root.showBindingDetails = !root.showBindingDetails
+            }
+          }
+
           Repeater {
-            model: 12
+            model: root.showBindingDetails ? 1 : 0
             delegate: Column {
               required property int index
               width: form.width
               spacing: Style.space(6)
 
-              property int slot: index + 1
+              property int slot: root.selectedSlot
               property var action: root.draftKeys(slot)
               property var confirmedBinding: root.bindingFor(slot)
               property string kind: action && action.kind ? String(action.kind) : Model.KEEP_KIND
@@ -1029,17 +1092,18 @@ Panel {
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             width: parent.width
-            text: "Button names follow the vendor layout (Left, Right, Middle, Back, Forward); only Back is verified on this unit. At least one button must stay bound to left-click. Unlisted bindings are kept on the mouse untouched."
+            text: "Layout follows the vendor defaults; Back is physically verified. Keep at least one accessible button assigned to left-click."
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
           }
         }
 
-        PanelSeparator { foreground: root.ink }
+
 
         // ---- profiles (host-side) ------------------------------------------------
         Column {
+          visible: root.currentTab === 2
           width: parent.width
           spacing: Style.space(10)
 
@@ -1179,10 +1243,11 @@ Panel {
           }
         }
 
-        PanelSeparator { foreground: root.ink }
+
 
         // ---- device ----------------------------------------------------------------
         Column {
+          visible: root.currentTab === 2
           width: parent.width
           spacing: Style.space(10)
 
@@ -1257,11 +1322,16 @@ Panel {
           }
         }
 
-        PanelSeparator { foreground: root.ink }
 
+
+      }
+    }
         // ---- footer: errors, notice, Apply/Cancel ----------------------------------
         Column {
-          width: parent.width
+          id: footer
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
           spacing: Style.space(8)
 
           Repeater {
@@ -1346,8 +1416,6 @@ Panel {
             font.pixelSize: Style.font.caption
           }
         }
-      }
-    }
 
     ConfirmDialog {
       id: closeDialog
