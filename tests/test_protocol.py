@@ -57,15 +57,28 @@ class FramingTest(unittest.TestCase):
             payload = bytes(tx[2:16]).rstrip(b"\x00")
             self.assertEqual(protocol.frame(op, payload), tx)
 
+    def test_model_query_matches_hardware_capture(self):
+        self.assertEqual(protocol.frame(protocol.OP_MODEL, protocol.MODEL_QUERY).hex(),
+                         "0801000000080000000000000000000044")
+        captured = bytes.fromhex("09010000000835020000350200000000d5")
+        self.assertEqual(protocol.parse_model(captured), (0x35, 0x02))
+        for index in (0, 1, 2, 5, 16):
+            malformed = bytearray(captured)
+            malformed[index] ^= 1
+            if index != 16:
+                malformed[16] = (0x55 - sum(malformed[:16])) & 0xff
+            with self.assertRaises(ValueError):
+                protocol.parse_model(bytes(malformed))
+
     def test_checksum_rule(self):
         self.assertEqual(protocol.checksum(bytes(16)), 0x55)
         self.assertEqual(protocol.checksum(bytes([0x08, 0x04] + [0] * 14)), 0x49)
 
     def test_allowlist_rejects_unknown_opcodes(self):
-        for op in (0x00, 0x01, 0x02, 0x05, 0x06, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x10):
+        for op in (0x00, 0x02, 0x05, 0x06, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x10):
             with self.assertRaises(ValueError, msg=f"op 0x{op:02x}"):
                 protocol.frame(op)
-        for op in (0x03, 0x04, 0x07, 0x08, 0x0F):
+        for op in (0x01, 0x03, 0x04, 0x07, 0x08, 0x0F):
             protocol.frame(op)  # must not raise
 
     def test_oversize_payload_rejected(self):

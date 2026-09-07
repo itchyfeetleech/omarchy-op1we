@@ -17,12 +17,15 @@ CHECKSUM_BASE = 0x55
 
 # Strict opcode allowlist (docs/protocol.md). Anything else must never
 # be sent: 0x0E is implicated in a receiver bootloader reset.
+OP_MODEL = 0x01
+MODEL_QUERY = bytes.fromhex("00 00 00 08 00 00 00 00 00 00 00 00 00 00")
+OP1WE_MODEL = (0x35, 0x02)
 OP_LINK = 0x03
 OP_BATTERY = 0x04
 OP_EEPROM_WRITE = 0x07
 OP_EEPROM_READ = 0x08
 OP_PROFILE = 0x0F
-ALLOWED_OPCODES = frozenset({OP_LINK, OP_BATTERY, OP_EEPROM_WRITE, OP_EEPROM_READ, OP_PROFILE})
+ALLOWED_OPCODES = frozenset({OP_MODEL, OP_LINK, OP_BATTERY, OP_EEPROM_WRITE, OP_EEPROM_READ, OP_PROFILE})
 
 # Unsolicited notification opcode (CPI-stage reports). Never sent, but
 # valid frames with this opcode arrive on their own and must be
@@ -169,6 +172,14 @@ def parse_reply(reply: bytes, expected_opcode: int) -> bytes:
     if length > MAX_DATA_PER_FRAME:
         raise ValueError(f"reply length {length} exceeds {MAX_DATA_PER_FRAME}")
     return bytes(reply[6:6 + length])
+
+
+def parse_model(reply: bytes) -> tuple[int, int]:
+    """Vendor CheckPsd CID/MID, confirmed on OP1we (docs/protocol.md)."""
+    data = parse_reply(reply, OP_MODEL)
+    if reply[2] != 0 or len(data) != 8:
+        raise ValueError("malformed model reply")
+    return data[4], data[5]
 
 
 def parse_battery(reply: bytes) -> tuple[int, int | None]:

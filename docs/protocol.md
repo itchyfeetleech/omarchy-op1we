@@ -42,6 +42,7 @@ unexercised vendor writes.
 
 | Op | Direction | Meaning | Evidence |
 |----|-----------|---------|----------|
+| `0x01` | read | paired model (vendor CheckPsd), CID/MID | OP1we `35:02` confirmed 2026-09-07; checked before every settings write |
 | `0x03` | read | link state: `data[0]` = 1 up / 0 mouse offline | verified: `09 03 00 00 00 01 01 …` |
 | `0x04` | read | battery: `data[0]` = percent 0–100, `data[1]` = charging flag | verified: `09 04 00 00 00 02 46 00 …` (70%, not charging). Values above 100 are rejected, matching the vendor's `cmp $0x64; ja` bound |
 | `0x06` | — | **forbidden** (unknown, stateful: returned `[01,17]` before a receiver reset and `[00,00]` after) | observed only |
@@ -54,7 +55,7 @@ answers `0x04` from cache while the link is momentarily down (e.g.
 at cable-insert), per the xm2we reference; our captures are
 consistent (link 1, battery stable).
 
-Observed but forbidden: `0x00`/`0x01`/`0x0A`/`0x0C` answer an empty
+Observed with empty payloads: `0x00`/`0x01`/`0x0A`/`0x0C` answer an empty
 echo with byte 2 set; `0x05`/`0x0D` answer empty; `0x09`/`0x0B` stay
 silent. None of these have a known meaning; `0x0D`/`0x0E` are
 additionally implicated in the bootloader reset.
@@ -151,7 +152,7 @@ host writes — the stale-revision check (re-read and retry) is the
 correct response, and unknown bytes are always preserved.
 Follow-up: re-read these addresses over time to pin the trigger.
 
-## Model query (CheckPsd — statically isolated, NOT hardware-confirmed)
+## Model query (CheckPsd — confirmed on OP1we)
 
 Reverse-engineered 2026-09-07 from the pinned vendor binary
 (`Endgame Gear WE Series.exe`, 2214400 bytes, sha256
@@ -181,12 +182,20 @@ OP1we / `MID=0x01` = XM2we). Wire format, derived from the
   "answers an empty echo": we probed it with an empty payload, while
   the vendor always sends the 15-byte query above.
 
-Status: static isolation only. Opcode `0x01` stays off the production
-allowlist until an authorized operator session sends the query above
-(read-only effect — the vendor tool sends it on every scan) and
-observes `cid/mid` on this OP1we. On confirmation, the helper can
-replace local-pairing enrollment with proven model discrimination;
-until then enrollment stays mandatory.
+Hardware confirmation on 2026-09-07, normal-user receiver access:
+
+```text
+tx: 08 01 00 00 00 08 00 00 00 00 00 00 00 00 00 00 44
+rx: 09 01 00 00 00 08 35 02 00 00 35 02 00 00 00 00 d5
+```
+
+The 8-byte data block carries CID/MID at offsets 4/5 (full frame
+10/11), matching the vendor's payload offsets 9/10. A second query
+through the production parser confirmed `35:02`. Every write now
+requires this result under the same device lock as backup/write/verify.
+Malformed replies, timeouts and other models cause zero writes.
+Enrollment remains as explicit consent and receiver continuity checking.
+XM2we hardware was not tested; rejection is covered with simulated replies.
 
 ## Vendor Cfg table mechanism (DPI, statically decoded)
 

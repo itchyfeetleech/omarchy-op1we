@@ -170,6 +170,23 @@ class Controller:
 
     open_transport: callable  # (identity) -> context manager with .exchange()
 
+    @staticmethod
+    def _require_op1we(transport, deadline: float) -> tuple[int, int]:
+        try:
+            reply = transport.exchange(protocol.OP_MODEL, protocol.MODEL_QUERY,
+                                       min(0.6, _remaining(deadline)))
+            model = protocol.parse_model(bytes(reply))
+        except ValueError as exc:
+            raise Op1weError("unsupported", "receiver model reply is invalid; refusing writes") from exc
+        if model != protocol.OP1WE_MODEL:
+            raise Op1weError("unsupported", "paired device is not an OP1we; refusing writes")
+        return model
+
+    def verify_model(self, identity: DeviceIdentity) -> tuple[int, int]:
+        deadline = time.monotonic() + STATUS_TIMEOUT
+        with DeviceLock(identity), self.open_transport(identity) as transport:
+            return self._require_op1we(transport, deadline)
+
     def status(self, identity: DeviceIdentity) -> settings_mod.Status:
         # Battery first: the receiver answers from cache while the
         # link is momentarily down (docs/protocol.md). The three
@@ -465,6 +482,7 @@ class Controller:
         deadline = time.monotonic() + timeout
         with DeviceLock(identity):
             with self.open_transport(identity) as transport:
+                self._require_op1we(transport, deadline)
                 config, type5 = self._read_config_and_payloads(transport, deadline)
                 current = {**config, **_type5_addr_map(type5)}
                 if (expected_revision is not None

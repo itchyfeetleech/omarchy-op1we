@@ -60,6 +60,8 @@ class FakeTransport:
             raise AssertionError(f"allowlist bypass attempt: 0x{opcode:02x}")
         if self.dead:
             raise device_mod.Op1weError("unavailable", "dead", retryable=True)
+        if opcode == protocol.OP_MODEL:
+            return bytes.fromhex("09 01 00 00 00 08 35 02 00 00 35 02 00 00 00 00 d5")
         if opcode == protocol.OP_BATTERY:
             if self.battery is None:
                 raise device_mod.Op1weError("timeout", "no battery", retryable=True)

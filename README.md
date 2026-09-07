@@ -9,6 +9,14 @@ controls. Uses your current Omarchy colors, fonts and borders.
 Native Quickshell capture with fixture values for layout demonstration;
 it is not evidence of a live configuration write.
 
+<details>
+<summary>Sensitivity and profiles</summary>
+
+![DPI stages and sensor controls](docs/sensitivity.png)
+![Host profiles and device recovery](docs/profiles.png)
+
+</details>
+
 **0.4.0 is a development preview.** Supported controls are listed below.
 Full driver parity is still blocked by the hardware/protocol work recorded
 in [the parity matrix](docs/parity.md). No macros or other mouse models.
@@ -18,7 +26,19 @@ in [the parity matrix](docs/parity.md). No macros or other mouse models.
 Requires Omarchy 4.0.2-compatible Quickshell and Python 3. No pip packages,
 Node, build tools or background service are needed at runtime.
 
-From this checkout, or the extracted release archive:
+Install directly from GitHub:
+
+```bash
+omarchy plugin add https://github.com/itchyfeetleech/omarchy-op1we --enable
+```
+
+For the permission commands below, first enter the installed directory:
+
+```bash
+cd ~/.config/omarchy/plugins/hoppcx.op1we
+```
+
+Alternatively, from a checkout or the extracted release archive:
 
 ```bash
 bash scripts/install-dev.sh
@@ -31,7 +51,7 @@ Installation copies files to `~/.config/omarchy/plugins/hoppcx.op1we`.
 It validates the staged plugin and refuses unmanaged installations, local
 modifications and symlinks. Rerunning the installer updates an unchanged
 managed copy. It does not change your permissions or mouse settings.
-If the shell retains old QML after an update, log out and back in.
+If the shell retains old QML after an update, run `omarchy restart shell`.
 
 ### Receiver permissions
 
@@ -49,8 +69,9 @@ world-write access. The helper runs as your normal user. The verified
 transport is the wireless receiver; wired operation remains unverified.
 
 Before enabling writes, use **Enroll this receiver** and confirm that its
-paired mouse is the OP1we. Enrollment checks descriptor and port continuity,
-but cannot detect same-port replacement/re-pairing; re-confirm after either.
+paired mouse is the OP1we. Enrollment checks descriptor and port continuity. Before every settings write,
+the helper also queries the paired model and requires the verified OP1we
+identifiers (CID `35`, MID `02`). Unknown or unavailable model replies block writes.
 
 ## Use
 
@@ -96,6 +117,14 @@ above is missing. Exit codes: 0 success, 2 invalid input, 3
 unavailable/permission/unsupported, 4 busy/conflict, 5 protocol failure.
 
 ## Remove
+
+For a GitHub/marketplace installation:
+
+```bash
+omarchy plugin remove hoppcx.op1we
+```
+
+For a managed development/archive installation:
 
 ```bash
 omarchy plugin disable hoppcx.op1we

@@ -1,3 +1,10 @@
+> Release closeout, 2026-09-07: the user authorized publishing the supported
+> preview and completing remaining gaps where practical. Receiver permissions,
+> panel shifting, icon clipping and paired-model verification are now resolved.
+> The historical milestone notes below retain their original evidence; current
+> release status and remaining hardware limits are in docs/release.md and
+> docs/parity.md. Full driver parity is not claimed.
+
 # OP1we Control — implementation plan
 
 Planning date: 2026-09-07. Milestones 1–2: **blocked (review

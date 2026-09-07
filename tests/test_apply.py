@@ -46,6 +46,26 @@ class ApplyTest(unittest.TestCase):
     def fresh_revision(self, ctl):
         return ctl.snapshot(IDENTITY).revision
 
+    def test_model_mismatch_or_failed_query_never_writes(self):
+        from test_controller import reply
+        for mode in ("xm2we", "unknown", "malformed", "timeout"):
+            with self.subTest(mode=mode):
+                class WrongModel(FakeTransport):
+                    def exchange(self, opcode, payload=b"", timeout=2.0):
+                        if opcode == protocol.OP_MODEL:
+                            if mode == "timeout":
+                                raise device_mod.Op1weError("timeout", "no model reply")
+                            if mode == "malformed":
+                                return reply(opcode, b"\x35\x02")
+                            mid = 1 if mode == "xm2we" else 99
+                            return reply(opcode, bytes([0x35, mid, 0, 0, 0x35, mid, 0, 0]))
+                        return super().exchange(opcode, payload, timeout)
+                fake = WrongModel(IDENTITY)
+                ctl = controller_mod.Controller(lambda ident: fake)
+                with self.assertRaises(device_mod.Op1weError):
+                    ctl.apply_bytes(IDENTITY, {protocol.ADDR_DEBOUNCE: bytes([2, 0x53])})
+                self.assertEqual(fake.writes, [])
+
     def test_full_apply(self):
         fake = FakeTransport(IDENTITY)
         ctl = controller_mod.Controller(lambda ident: fake)

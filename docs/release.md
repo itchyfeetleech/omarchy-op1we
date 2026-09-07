@@ -11,17 +11,18 @@ portable CI are included.
 This preview is not a complete replacement for the vendor driver yet.
 Remaining blockers: LOD, stage-count writes, DPI above 10000, several special
 actions, full physical button mapping, key/media trigger verification,
-wired/charging acceptance and paired-model discrimination. See parity.md.
+wired/charging acceptance. Paired-model querying is now verified on OP1we
+and enforced before writes. See parity.md.
 
 ## Marketplace submission draft
 
 - Name: OP1we Control
 - ID: hoppcx.op1we
 - Category: Hardware
-- Tags: mouse, OP1we, battery, settings
+- Tags: Bar, Quickshell, Power management
 - Description: Native Omarchy OP1we battery widget and annotated mouse controls.
 - Preview: docs/preview.png (native themed render using fixture data)
-- Repository URL: pending — no Git remote configured
+- Repository URL: https://github.com/itchyfeetleech/omarchy-op1we
 - Submission URL: pending — not submitted
 
 Requirements rechecked on 2026-09-07 against the
@@ -34,16 +35,27 @@ specified in PLAN.md. Do not publish a full-parity claim for this preview.
 ## Acceptance record
 
 - Native renderer: isolated Quickshell, current Omarchy theme; live installed panel also checked after one user-approved shell restart, with no plugin QML errors.
-- Live receiver currently reports permission denied; udev setup and enrollment remain user setup steps.
+- Live receiver access fixed on 2026-09-07: installed the narrow uaccess rule,
+  reloaded udev and triggered the connected hidraw device. Normal-user status
+  and configuration reads pass (already enrolled, 70% battery, 1600 DPI,
+  1000 Hz); no mouse settings were changed.
+- Periodic panel shifting fixed by excluding background status polls from
+  foreground busy state and skipping polls during foreground operations.
+  Plugin rescan retained cached QML; an Omarchy shell restart loaded the fix,
+  and the user confirmed the shifting stopped on 2026-09-07.
 - Preview: actual native panel capture with fixture configuration, not a hardware-write result.
-- 113 Python + 28 Node tests, native lint/manifest, shell/Python/udev checks passed.
+- 115 Python + 28 Node tests, native lint/manifest, shell/Python/udev checks passed.
 - Extracted archive installed/updated/removed with native validation in an isolated config directory; unrelated file preserved; archive audit/checksum passed.
 - Buttons, Sensitivity and Profiles pages visually checked; Buttons also checked at 200%.
 - CI workflow delivered; remote execution awaits a GitHub repository.
-- Publication readiness rechecked 2026-09-07: 43 tracked files, no
-  secrets, `dist/` ignored, manifest valid; blocked only on
-  owner/name confirmation, explicit publish authorization, the manual
-  issue submission and external review (see PLAN.md).
+- Publication authorized by the user on 2026-09-07 as a supported development
+  preview. Full driver parity is not claimed. Marketplace approval is external.
+- Model query `35:02` confirmed twice read-only; all production writes now
+  verify it under the device lock. Wrong-model, malformed and timeout replies
+  are tested to perform zero writes.
+- Bar icon clipping fixed with a normalized mouse outline fitted to the canvas bounds.
+  All three native panel pages captured and visually reviewed; clearer empty
+  profile state and disabled buttons, shorter labels and updated screenshots.
 - Fresh-user physical installation, every remapped action, charging/wired,
   suspend/reconnect, report timing and full parity: pending operator/hardware work.
 
@@ -68,5 +80,5 @@ Record firmware, transport, before/after revision and result for each:
   dirty close/profile switch, dropdown dismissal and visible recovery errors.
 
 Record results in hardware-results.md. An automated mock pass cannot close a
-physical checkbox. Full milestone-4 acceptance and publication are still gated
-by the earlier hardware blockers.
+physical checkbox. Full driver parity remains limited by the hardware backlog;
+the supported preview can be released independently with these limits disclosed.

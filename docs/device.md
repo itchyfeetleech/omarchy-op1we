@@ -89,9 +89,9 @@ cannot prove the paired mouse is an OP1we. Evidence gathered:
   `01 00 00 00 08 <cookie:4> 00 00 00 00 00 00`
   (cookie is device-ignored; probe with zeros), expecting
   `reply[0]==0x01`, `reply[1]==0x00`, `cid=reply[9]`,
-  `mid=reply[10]`. Hardware confirmation on this OP1we is still
-  pending (one read-only query in an authorized operator session);
-  opcode `0x01` stays off the production allowlist until then.
+  `mid=reply[10]`. Hardware confirmation on this OP1we completed on 2026-09-07:
+  CID `35`, MID `02`, with a valid checksum. The query is now
+  allowlisted and checked immediately before every settings write.
 - Behavioral difference observed on this unit: the underside mode
   button cycles **CPI stages** (unsolicited `0x0A` notifications,
   LED blue/green/yellow/red), while the xm2we reference documents the
@@ -102,14 +102,13 @@ Milestone-1 selection rule (implemented in `backend/op1we/device.py`):
 accept exactly one candidate matching VID `0x3367`, PID `0x1961`
 (receiver) or a verified wired PID, plus the `FF02/usage 2/report 8`
 descriptor marker; zero candidates and multiple candidates both fail
-closed with distinct errors. Because OP1we-vs-XM2we cannot yet be
-proven on the wire, first use requires explicit local pairing
+closed with distinct errors. First use also requires explicit local pairing
 enrollment: the operator confirms the paired mouse is the OP1we, and
 the helper records the enrollment (USB path, descriptor hash,
 firmware `bcdDevice`) and enforces fingerprint-plus-USB-path
-continuity on later writes (review F-006). Same-port replacement
-stays undetectable; lifting the enrollment requirement needs the
-CID/MID command (open follow-up).
+continuity on later writes (review F-006). The CID/MID check now rejects a
+non-OP1we pairing even at the same port; it does not uniquely identify
+one OP1we unit among multiple units of the same model.
 
 ## Firmware evidence
 

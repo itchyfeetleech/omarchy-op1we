@@ -44,6 +44,9 @@ Item {
   property string recoveryBackup: ""
   property bool busy: statusProc.running || readProc.running
     || queryProc.running || mutateProc.running
+  // Battery polling must not hide banners, shift the form or disable
+  // actions every two seconds. Only foreground work affects the panel.
+  property bool foregroundBusy: readProc.running || queryProc.running || mutateProc.running
   property bool mutating: mutateProc.running
 
   signal snapshotUpdated()
@@ -67,7 +70,7 @@ Item {
   // ---- refresh ----------------------------------------------------------
 
   function refreshStatus() {
-    if (statusProc.running) return false
+    if (busy) return false
     statusProc.command = _helperArgs(["status"])
     statusProc.running = true
     return true

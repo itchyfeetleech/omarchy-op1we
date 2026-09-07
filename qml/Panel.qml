@@ -98,11 +98,11 @@ Panel {
   }
 
   function _applyFromKeyboard() {
-    if (op1we && op1we.dirty && !op1we.busy && op1we.enrolled) op1we.applyDraft()
+    if (op1we && op1we.dirty && !op1we.foregroundBusy && op1we.enrolled) op1we.applyDraft()
   }
 
   function requestReset() {
-    if (!op1we || op1we.busy) return
+    if (!op1we || op1we.foregroundBusy) return
     pendingAction = "reset"
     pendingArg = ""
     actionDialog.message = op1we.dirty
@@ -112,7 +112,7 @@ Panel {
   }
 
   function requestRestore(path) {
-    if (!op1we || op1we.busy) return
+    if (!op1we || op1we.foregroundBusy) return
     var file = String(path || "").trim()
     if (file === "") {
       op1we.setNotice("Pick a backup file to restore.", "error")
@@ -127,7 +127,7 @@ Panel {
   }
 
   function requestProfileApply(name) {
-    if (!op1we || op1we.busy) return
+    if (!op1we || op1we.foregroundBusy) return
     var profile = String(name || "")
     if (profile === "") {
       op1we.setNotice("Pick a profile to apply.", "error")
@@ -388,7 +388,7 @@ Panel {
           spacing: Style.space(8)
 
           Text {
-            visible: root.op1we && root.op1we.busy
+            visible: root.op1we && root.op1we.foregroundBusy
             textFormat: Text.PlainText
             text: "Working\u2026"
             color: root.dim
@@ -415,13 +415,14 @@ Panel {
 
           Row {
             visible: root.op1we && (root.op1we.statusError || root.op1we.snapshotError)
-              && !root.op1we.busy
+              && !root.op1we.foregroundBusy
             width: parent.width
             spacing: Style.space(8)
 
             Button {
               text: "Retry"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
               foreground: root.ink
               fontFamily: root.fontFamily
@@ -464,6 +465,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Restore it"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
               foreground: root.ink
               fontFamily: root.fontFamily
@@ -475,7 +477,7 @@ Panel {
           }
 
           Column {
-            visible: root.op1we && !root.op1we.enrolled && !root.op1we.busy
+            visible: root.op1we && !root.op1we.enrolled && !root.op1we.foregroundBusy
             width: parent.width
             spacing: Style.space(8)
 
@@ -492,6 +494,7 @@ Panel {
             Button {
               text: "Enroll this receiver"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
               foreground: root.ink
               fontFamily: root.fontFamily
@@ -515,6 +518,7 @@ Panel {
               selected: root.currentTab === index
               bordered: true
               focusable: true
+              opacity: enabled ? 1 : 0.4
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: { root.currentTab = index; flick.contentY = 0 }
@@ -754,7 +758,7 @@ Panel {
 
           Toggle {
             width: parent.width
-            label: "Angle snapping (FixLine)"
+            label: "Angle snapping"
             enabled: root.op1we && root.op1we.draft ? true : false
             checked: root.op1we && root.op1we.draft ? root.op1we.draft.fixline === true : false
             foreground: root.ink
@@ -789,7 +793,7 @@ Panel {
             width: parent.width
             text: {
               var count = root.op1we && root.op1we.snapshot ? root.op1we.snapshot.stageCount : null
-              return "CPI stage count: " + (count === null || count === undefined ? "--" : count)
+              return "DPI stages: " + (count === null || count === undefined ? "--" : count)
                 + " · Read only"
             }
             color: root.dim
@@ -835,6 +839,7 @@ Panel {
             Button {
               text: root.showBindingDetails ? "Hide details" : "Edit binding"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
               foreground: root.ink
               onClicked: root.showBindingDetails = !root.showBindingDetails
@@ -909,6 +914,7 @@ Panel {
                     text: modelData.charAt(0).toUpperCase()
                     tooltipText: modelData.charAt(0).toUpperCase() + modelData.slice(1)
                     focusable: true
+              opacity: enabled ? 1 : 0.4
                     bordered: true
                     selected: action && action.buttons instanceof Array
                       && action.buttons.indexOf(modelData) !== -1
@@ -975,6 +981,7 @@ Panel {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "\u2212"
                     focusable: true
+              opacity: enabled ? 1 : 0.4
                     bordered: true
                     foreground: root.ink
                     fontFamily: root.fontFamily
@@ -997,6 +1004,7 @@ Panel {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "+"
                     focusable: true
+              opacity: enabled ? 1 : 0.4
                     bordered: true
                     foreground: root.ink
                     fontFamily: root.fontFamily
@@ -1046,6 +1054,7 @@ Panel {
                       property int bit: modelData
                       text: Model.MOD_NAMES[[1, 2, 4, 8].indexOf(bit)]
                       focusable: true
+              opacity: enabled ? 1 : 0.4
                       bordered: true
                       selected: action && typeof action.modifiers === "number"
                         && (action.modifiers & bit) !== 0
@@ -1092,7 +1101,7 @@ Panel {
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             width: parent.width
-            text: "Layout follows the vendor defaults; Back is physically verified. Keep at least one accessible button assigned to left-click."
+            text: "Keep at least one accessible button assigned to left-click."
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -1121,10 +1130,12 @@ Panel {
               id: profilePicker
               anchors.verticalCenter: parent.verticalCenter
               value: root.selectedProfile
-              options: (root.op1we && root.op1we.profiles instanceof Array
+              options: [{ value: "", label: root.op1we && root.op1we.profiles.length
+                ? "Choose a profile" : "No saved profiles" }].concat(
+                (root.op1we && root.op1we.profiles instanceof Array
                 ? root.op1we.profiles : []).map(function(p) {
-                  return String(p.name || "")
-                })
+                  return { value: String(p.name || ""), label: String(p.name || "") }
+                }))
               fontFamily: root.fontFamily
               onChanged: function(v) { root.selectedProfile = v }
             }
@@ -1133,6 +1144,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Refresh"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
               foreground: root.ink
               fontFamily: root.fontFamily
@@ -1147,8 +1159,9 @@ Panel {
             Button {
               text: "Apply"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
-              enabled: root.selectedProfile !== "" && root.op1we && !root.op1we.busy
+              enabled: root.selectedProfile !== "" && root.op1we && !root.op1we.foregroundBusy
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: root.requestProfileApply(root.selectedProfile)
@@ -1157,8 +1170,9 @@ Panel {
             Button {
               text: "Delete"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
-              enabled: root.selectedProfile !== "" && root.op1we && !root.op1we.busy
+              enabled: root.selectedProfile !== "" && root.op1we && !root.op1we.foregroundBusy
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: {
@@ -1187,8 +1201,9 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Save current"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
-              enabled: root.op1we && !root.op1we.busy && root.op1we.snapshot
+              enabled: root.op1we && !root.op1we.foregroundBusy && root.op1we.snapshot
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: {
@@ -1213,8 +1228,9 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Export"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
-              enabled: root.selectedProfile !== "" && root.op1we && !root.op1we.busy
+              enabled: root.selectedProfile !== "" && root.op1we && !root.op1we.foregroundBusy
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: root.op1we.exportProfile(root.selectedProfile, profileFile.text)
@@ -1224,8 +1240,9 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Import"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
-              enabled: root.op1we && !root.op1we.busy
+              enabled: root.op1we && !root.op1we.foregroundBusy
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: root.op1we.importProfile(profileName.text, profileFile.text)
@@ -1265,8 +1282,9 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Back up now"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
-              enabled: root.op1we && !root.op1we.busy
+              enabled: root.op1we && !root.op1we.foregroundBusy
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: root.op1we.backupNow()
@@ -1276,8 +1294,9 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Reset to defaults"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
-              enabled: root.op1we && !root.op1we.busy && root.op1we.enrolled
+              enabled: root.op1we && !root.op1we.foregroundBusy && root.op1we.enrolled
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: root.requestReset()
@@ -1301,8 +1320,9 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Restore"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
-              enabled: root.op1we && !root.op1we.busy && root.op1we.enrolled
+              enabled: root.op1we && !root.op1we.foregroundBusy && root.op1we.enrolled
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: root.requestRestore(restorePath.text)
@@ -1386,9 +1406,10 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Apply"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
               active: true
-              enabled: root.op1we && root.op1we.dirty && !root.op1we.busy
+              enabled: root.op1we && root.op1we.dirty && !root.op1we.foregroundBusy
                 && root.op1we.enrolled && root.op1we.snapshot
               foreground: root.ink
               fontFamily: root.fontFamily
@@ -1400,8 +1421,9 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               text: "Cancel"
               focusable: true
+              opacity: enabled ? 1 : 0.4
               bordered: true
-              enabled: root.op1we && root.op1we.dirty && !root.op1we.busy
+              enabled: root.op1we && root.op1we.dirty && !root.op1we.foregroundBusy
               foreground: root.ink
               fontFamily: root.fontFamily
               onClicked: root.op1we.cancelDraft()

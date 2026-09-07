@@ -24,7 +24,7 @@ Item {
   ]
   function options() {
     return [{value: "keep", label: "Keep current"}].concat(
-      Model.MOUSE_BUTTONS.map(function(b) {return {value: b, label: b.charAt(0).toUpperCase() + b.slice(1) + " click"}}),
+      Model.MOUSE_BUTTONS.map(function(b) {return {value: b, label: b === "back" ? "Back" : b === "forward" ? "Forward" : b.charAt(0).toUpperCase() + b.slice(1) + " click"}}),
       [{value:"dpi-toggle",label:"Cycle DPI"}, {value:"dpi-plus",label:"DPI up"},
        {value:"dpi-minus",label:"DPI down"}, {value:"polling-switch",label:"Cycle polling"},
        {value:"unassigned",label:"Disabled"}, {value:"custom",label:"Custom binding…"}])

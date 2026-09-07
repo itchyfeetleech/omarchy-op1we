@@ -65,3 +65,20 @@ No writes, no new opcodes, and no enrollment/permission changes were
 made in v0.3. The statically isolated CheckPsd query (opcode `0x01`,
 see `protocol.md`) was deliberately not sent: new-opcode work waits
 for an authorized operator session.
+
+
+## Release closeout — 2026-09-07
+
+Installed the scoped receiver uaccess rule, reloaded udev, and triggered the
+connected receiver. Normal-user status and full configuration reads passed:
+70% battery, 1600 DPI, 1000 Hz. No mouse settings changed in this session.
+
+Vendor CheckPsd model query (read-only) returned a checksum-valid frame:
+`09 01 00 00 00 08 35 02 00 00 35 02 00 00 00 00 d5`.
+CID/MID is `35:02`, matching OP1we. Repeated through the production parser
+with the same result. Production writes now require that result while holding
+the device lock. Physical wrong-model/charging/LOD tests remain unperformed.
+
+The user confirmed periodic panel shifting stopped after installing the fix
+and restarting the shell. Background polls no longer change foreground busy
+state or shift controls.

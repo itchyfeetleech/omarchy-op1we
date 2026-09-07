@@ -150,83 +150,62 @@ BarWidget {
     }
   }
 
-  // Original mouse glyph: silhouette in bar ink with a status dot. Canvas
-  // (2x backing store) keeps it crisp and font-independent at any scale.
+  // Normalized 24px outline fitted to the actual canvas bounds.
   component MouseIcon: Item {
     id: mouseIcon
     property color ink: Color.foreground
     property bool dim: false
     property color dot: Color.foreground
     property bool charging: false
-
     width: Style.bar.iconCanvas
     height: Style.bar.iconCanvas
 
     Canvas {
       id: glyph
       anchors.fill: parent
-      width: 32
-      height: 32
-      renderTarget: Canvas.Image
-
-      // Rounded-rect path via arcs (no roundRect/reset: both are missing
-      // from older Canvas implementations).
-      function rr(ctx, x, y, w, h, r) {
-        ctx.beginPath()
-        ctx.moveTo(x + r, y)
-        ctx.arcTo(x + w, y, x + w, y + h, r)
-        ctx.arcTo(x + w, y + h, x, y + h, r)
-        ctx.arcTo(x, y + h, x, y, r)
-        ctx.arcTo(x, y, x + w, y, r)
-        ctx.closePath()
-      }
-
+      antialiasing: true
+      onWidthChanged: requestPaint()
+      onHeightChanged: requestPaint()
       onPaint: {
         var ctx = getContext("2d")
-        var s = 2 // 32px backing for a 16px slot
-        ctx.setTransform(1, 0, 0, 1, 0, 0)
-        ctx.clearRect(0, 0, 32, 32)
-        ctx.scale(s, s)
-        ctx.globalCompositeOperation = "source-over"
-        var body = mouseIcon.dim ? Qt.darker(mouseIcon.ink, 1.8) : mouseIcon.ink
-        // Body.
-        ctx.fillStyle = body.toString()
-        glyph.rr(ctx, 4.2, 1.2, 7.6, 13.6, 3.4)
-        ctx.fill()
-        // Split between buttons + wheel, knocked out.
-        ctx.globalCompositeOperation = "destination-out"
-        ctx.fillRect(7.7, 1.4, 0.6, 4.6)
-        glyph.rr(ctx, 7.1, 2.6, 1.8, 2.6, 0.9)
-        ctx.fill()
-        // Status badge tucked into the corner: a knocked-out ring keeps it
-        // legible on any theme while leaving the silhouette intact.
+        ctx.reset()
+        ctx.scale(width / 24, height / 24)
+        ctx.strokeStyle = mouseIcon.ink.toString()
+        ctx.lineWidth = 1.8
+        ctx.lineCap = "round"
+        ctx.lineJoin = "round"
         ctx.beginPath()
-        ctx.arc(13.1, 13.1, 2.4, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.globalCompositeOperation = "source-over"
-        ctx.fillStyle = mouseIcon.dot.toString()
+        ctx.moveTo(12, 2)
+        ctx.bezierCurveTo(7.5, 2, 6, 4.8, 6, 8)
+        ctx.lineTo(6, 15.5)
+        ctx.bezierCurveTo(6, 19.5, 8.4, 22, 12, 22)
+        ctx.bezierCurveTo(15.6, 22, 18, 19.5, 18, 15.5)
+        ctx.lineTo(18, 8)
+        ctx.bezierCurveTo(18, 4.8, 16.5, 2, 12, 2)
+        ctx.closePath()
+        ctx.stroke()
         ctx.beginPath()
-        ctx.arc(13.1, 13.1, 1.7, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.moveTo(12, 5)
+        ctx.lineTo(12, 9)
+        ctx.stroke()
         if (mouseIcon.charging) {
-          ctx.fillStyle = body.toString()
           ctx.beginPath()
-          ctx.moveTo(13.5, 11.7)
-          ctx.lineTo(12.5, 13.3)
-          ctx.lineTo(13.1, 13.3)
-          ctx.lineTo(12.7, 14.5)
-          ctx.lineTo(13.8, 12.8)
-          ctx.lineTo(13.2, 12.8)
-          ctx.closePath()
+          ctx.moveTo(12.8, 12)
+          ctx.lineTo(10.3, 16)
+          ctx.lineTo(13.4, 16)
+          ctx.lineTo(11.2, 19.5)
+          ctx.stroke()
+        } else {
+          ctx.fillStyle = mouseIcon.dot.toString()
+          ctx.beginPath()
+          ctx.arc(12, 16.2, 1.5, 0, Math.PI * 2)
           ctx.fill()
         }
       }
     }
-
     onInkChanged: glyph.requestPaint()
     onDimChanged: glyph.requestPaint()
     onDotChanged: glyph.requestPaint()
     onChargingChanged: glyph.requestPaint()
-    Component.onCompleted: glyph.requestPaint()
   }
 }

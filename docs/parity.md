@@ -84,7 +84,7 @@ are preserved untouched by read-modify-write.)
 - RGB/lighting editing, fire key, Windows pointer settings.
 - Firmware flashing (nothing ships to reproduce).
 - Other mouse models (XM2we shares the receiver ID; OP1we-vs-XM2we
-  wire discrimination is open — enrollment + fail-closed in
+  wire query confirmed on OP1we; checked before writes, with enrollment in
   `device.md`).
 - Wired-mode PIDs until observed on hardware.
 
@@ -116,10 +116,10 @@ Still open, each with a concrete next step (never guessing):
   polling write session (user lacks `input` group; node is
   root-only for this user).
 - C11 charging=1 observation: needs an operator cable session.
-- CID/MID: command isolated statically 2026-09-07 (opcode `0x01`,
-  see `protocol.md`); next step is one read-only query in an
-  authorized operator session, then enrollment can be replaced by
-  proven discrimination.
+- CID/MID: resolved 2026-09-07. Read-only query confirmed `35:02` on
+  OP1we; writes now require that model reply under the device lock.
+  Rejection of other identifiers is tested with fake transport; physical
+  XM2we re-pairing remains untested. Enrollment stays as explicit consent.
 - `0x06`/`0xAB` meanings; firmware-drift trigger (`0x0A`/`0xA0`/
   `0xA6` changed without host writes): timed re-reads blocked on
   operator wake — the OP1we sleeps while the user drives one of two
