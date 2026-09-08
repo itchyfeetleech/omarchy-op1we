@@ -278,6 +278,15 @@ Panel {
 
     Flickable {
       id: flick
+      // KeyboardPanel puts its content holder inside the painted BorderSurface.
+      // It exposes no background property; override that surface's fill so shell
+      // popup transparency cannot hide this settings panel. Keep theme changes.
+      Binding {
+        target: flick.parent ? flick.parent.parent : null
+        property: "color"
+        value: Qt.alpha(Color.background, 1)
+      }
+
       anchors.fill: parent
       anchors.bottomMargin: footer.implicitHeight + Style.space(18)
       contentWidth: width
