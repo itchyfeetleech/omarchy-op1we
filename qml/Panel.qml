@@ -76,8 +76,13 @@ Panel {
     return false
   }
 
+  // PluginBarApi exposes centerHoverRevealSuppressed as read-only; the
+  // writable path is its setter function. Direct assignment throws and
+  // would abort close() before controller.hide() runs (stuck panel).
   function setCenterHoverRevealSuppressed(value) {
-    if (root.bar && "centerHoverRevealSuppressed" in root.bar)
+    if (root.bar && typeof root.bar.setCenterHoverRevealSuppressed === "function")
+      root.bar.setCenterHoverRevealSuppressed(value)
+    else if (root.bar && "centerHoverRevealSuppressed" in root.bar)
       root.bar.centerHoverRevealSuppressed = value
   }
 
