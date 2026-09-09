@@ -1,13 +1,8 @@
-# OP1we Control
+![Native OP1we panel](docs/preview.png)
 
 A native Omarchy panel for the Endgame Gear OP1we: battery in your bar,
 button mappings around a mouse outline, and compact DPI, sensor and profile
 controls. Uses your current Omarchy colors, fonts and borders.
-
-![Native OP1we panel](docs/preview.png)
-
-Native Quickshell capture with fixture values for layout demonstration;
-it is not evidence of a live configuration write.
 
 <details>
 <summary>Sensitivity and profiles</summary>
